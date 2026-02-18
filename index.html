@@ -1,0 +1,3613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Tile Layout Planner</title>
+    <style>
+        :root {
+            /* Nord-inspired color palette */
+            --slate-gray: #2E3440;
+            --soft-charcoal: #3B4252;
+            --steel-blue: #4C566A;
+            --electric-blue: #5E81AC;
+            --teal-green: #88C0D0;
+            --warm-yellow: #EBCB8B;
+            --soft-red: #BF616A;
+            --canvas-bg: #E5E9F0;
+            --panel-bg: #ECEFF4;
+            --light-gray: #D8DEE9;
+            --tile-line: #4C566A;
+            --grout-line: #6C7A8A;
+            --white: #FFFFFF;
+            
+            /* Spacing */
+            --space-xs: 4px;
+            --space-sm: 8px;
+            --space-md: 16px;
+            --space-lg: 24px;
+            
+            /* Safe area insets (native app support — no-ops in browsers) */
+            --safe-top: env(safe-area-inset-top, 0px);
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+            --safe-left: env(safe-area-inset-left, 0px);
+            --safe-right: env(safe-area-inset-right, 0px);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            background: var(--slate-gray);
+            touch-action: none;
+            padding-top: var(--safe-top);
+            padding-bottom: var(--safe-bottom);
+            padding-left: var(--safe-left);
+            padding-right: var(--safe-right);
+        }
+        
+        #canvasContainer {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        #canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+            background: var(--canvas-bg);
+            touch-action: none;
+        }
+        
+        #panel {
+            width: 300px;
+            min-width: 300px;
+            background: var(--panel-bg);
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid var(--steel-blue);
+        }
+        
+        #tabBar {
+            display: flex;
+            background: var(--soft-charcoal);
+            border-bottom: 1px solid var(--steel-blue);
+        }
+        
+        .tab {
+            flex: 1;
+            padding: 12px 8px;
+            text-align: center;
+            background: var(--soft-charcoal);
+            border: none;
+            border-right: 1px solid var(--steel-blue);
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--light-gray);
+            transition: all 0.15s ease;
+        }
+        
+        .tab:last-child {
+            border-right: none;
+        }
+        
+        .tab:hover {
+            background: var(--steel-blue);
+            color: var(--white);
+        }
+        
+        .tab.active {
+            background: var(--panel-bg);
+            color: var(--slate-gray);
+            border-bottom: 3px solid var(--electric-blue);
+        }
+        
+        .tab .tab-short { display: none; }
+        .tab .tab-full { display: inline; }
+        
+        #tabContent {
+            flex: 1;
+            overflow-y: auto;
+            padding: var(--space-md);
+        }
+        
+        #unitsSection {
+            padding: var(--space-md);
+            border-top: 1px solid var(--light-gray);
+            background: var(--panel-bg);
+        }
+        
+        .tab-pane {
+            display: none;
+        }
+        
+        .tab-pane.active {
+            display: block;
+        }
+        
+        /* Button styles */
+        button {
+            width: 100%;
+            padding: 10px var(--space-md);
+            margin-bottom: var(--space-sm);
+            background: transparent;
+            color: var(--steel-blue);
+            border: 1px solid var(--steel-blue);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.15s ease;
+        }
+        
+        button:hover {
+            background: var(--light-gray);
+        }
+        
+        button.primary {
+            background: var(--electric-blue);
+            color: var(--white);
+            border-color: var(--electric-blue);
+        }
+        
+        button.primary:hover {
+            background: #6d8fba;
+        }
+        
+        button.primary:active {
+            background: #4f739c;
+        }
+        
+        button.danger {
+            color: var(--soft-red);
+            border-color: var(--soft-red);
+        }
+        
+        button.danger:hover {
+            background: rgba(191, 97, 106, 0.1);
+        }
+        
+        /* Toggle button group (segmented control) */
+        .toggle-group {
+            display: flex;
+            margin-bottom: var(--space-md);
+            border: 1px solid var(--steel-blue);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .toggle-group button {
+            flex: 1;
+            margin: 0;
+            border: none;
+            border-radius: 0;
+            border-right: 1px solid var(--steel-blue);
+            background: transparent;
+            color: var(--steel-blue);
+        }
+        
+        .toggle-group button:last-child {
+            border-right: none;
+        }
+        
+        .toggle-group button:hover {
+            background: var(--light-gray);
+        }
+        
+        .toggle-group button.active {
+            background: var(--electric-blue);
+            color: var(--white);
+        }
+        
+        .toggle-group button.active:hover {
+            background: #6d8fba;
+        }
+        
+        /* Section titles */
+        .section-title {
+            font-weight: 600;
+            margin-top: var(--space-md);
+            margin-bottom: var(--space-sm);
+            padding-bottom: var(--space-xs);
+            font-size: 13px;
+            color: var(--slate-gray);
+            border-bottom: 2px solid var(--electric-blue);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .section-title:first-child {
+            margin-top: 0;
+        }
+        
+        /* Input groups */
+        .input-group {
+            margin-bottom: var(--space-md);
+        }
+        
+        .input-group.hidden {
+            display: none;
+        }
+        
+        /* Two-column row for inputs */
+        .input-row {
+            display: flex;
+            gap: var(--space-sm);
+            margin-bottom: var(--space-md);
+        }
+        
+        .input-row .input-group {
+            flex: 1;
+            margin-bottom: 0;
+        }
+        
+        .input-with-buttons {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+        
+        .input-with-buttons input {
+            flex: 1;
+        }
+        
+        .input-with-buttons button {
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            margin: 0;
+            font-size: 16px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        
+        .combo-input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: stretch;
+        }
+        
+        .combo-input-wrapper input {
+            flex: 1;
+            border-radius: 4px 0 0 4px;
+            border-right: none;
+        }
+        
+        .combo-dropdown-button {
+            width: 28px;
+            padding: 0;
+            margin: 0;
+            background: var(--white);
+            border: 1px solid var(--light-gray);
+            border-left: none;
+            border-radius: 0 4px 4px 0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            color: var(--steel-blue);
+        }
+        
+        .combo-dropdown-button:hover {
+            background: var(--light-gray);
+        }
+        
+        .combo-dropdown-menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: var(--white);
+            border: 1px solid var(--light-gray);
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+            z-index: 1000;
+            display: none;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .combo-dropdown-menu.show {
+            display: block;
+        }
+        
+        .combo-dropdown-item {
+            padding: var(--space-sm) var(--space-md);
+            cursor: pointer;
+            font-size: 12px;
+            color: var(--slate-gray);
+        }
+        
+        .combo-dropdown-item:hover {
+            background: var(--light-gray);
+        }
+        
+        label {
+            display: block;
+            margin-bottom: var(--space-xs);
+            font-size: 12px;
+            color: var(--soft-charcoal);
+            font-weight: 500;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: var(--space-sm);
+            border: 1px solid var(--light-gray);
+            border-radius: 4px;
+            font-size: 13px;
+            background: var(--white);
+            color: var(--slate-gray);
+            height: 34px;
+        }
+        
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--electric-blue);
+            box-shadow: 0 0 0 2px rgba(94, 129, 172, 0.2);
+        }
+        
+        .info-box {
+            background: rgba(94, 129, 172, 0.1);
+            border: 1px solid rgba(94, 129, 172, 0.3);
+            padding: var(--space-md);
+            border-radius: 4px;
+            margin-top: var(--space-md);
+            font-size: 11px;
+            line-height: 1.6;
+            color: var(--soft-charcoal);
+        }
+        
+        .info-box strong {
+            color: var(--slate-gray);
+        }
+        
+        .hint-text {
+            font-size: 11px;
+            color: var(--steel-blue);
+            margin: var(--space-sm) 0;
+            line-height: 1.4;
+        }
+        
+        .surface-list {
+            max-height: 150px;
+            overflow-y: auto;
+            border: 1px solid var(--light-gray);
+            border-radius: 4px;
+            padding: var(--space-sm);
+            margin: var(--space-sm) 0;
+            background: var(--white);
+        }
+        
+        .surface-item {
+            display: flex;
+            align-items: center;
+            padding: var(--space-xs) var(--space-sm);
+            margin: 2px 0;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            color: var(--slate-gray);
+            border: 1px solid transparent;
+            transition: all 0.15s ease;
+        }
+        
+        .surface-item:hover {
+            background: var(--light-gray);
+        }
+        
+        .surface-item.selected {
+            background: rgba(94, 129, 172, 0.15);
+            border-color: var(--electric-blue);
+        }
+        
+        .surface-color {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+            margin-right: var(--space-sm);
+            border: 1px solid var(--steel-blue);
+        }
+        
+        .surface-checkbox {
+            margin-right: var(--space-xs);
+            font-size: 14px;
+            color: var(--steel-blue);
+        }
+        
+        .surface-item.selected .surface-checkbox {
+            color: var(--electric-blue);
+        }
+        
+        #shiftIndicator {
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--warm-yellow);
+            color: var(--slate-gray);
+            padding: var(--space-sm) var(--space-md);
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 12px;
+            display: none;
+            z-index: 1000;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        
+        .checkbox-group {
+            margin-bottom: var(--space-md);
+        }
+        
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-weight: 400;
+        }
+        
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            height: auto;
+            margin-right: var(--space-sm);
+        }
+        
+        /* Inline row for checkbox + dropdown on same line */
+        .inline-tools-row {
+            display: flex;
+            gap: var(--space-md);
+            align-items: center;
+            margin-bottom: var(--space-md);
+        }
+        
+        .inline-tools-row .checkbox-group {
+            margin-bottom: 0;
+            white-space: nowrap;
+        }
+        
+        .inline-tools-row .snap-mode-group {
+            flex: 1;
+            display: flex;
+            align-items: center;
+        }
+        
+        .inline-tools-row .snap-mode-group select {
+            width: 100%;
+            height: 34px;
+            padding: var(--space-sm);
+            font-size: 13px;
+        }
+        
+        #customPromptOverlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(46, 52, 64, 0.7);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        #customPromptDialog {
+            background: var(--white);
+            border-radius: 8px;
+            padding: var(--space-lg);
+            min-width: 400px;
+            max-width: 500px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        
+        #customPromptMessage {
+            margin-bottom: var(--space-md);
+            font-size: 14px;
+            line-height: 1.5;
+            white-space: pre-line;
+            color: var(--slate-gray);
+        }
+        
+        #customPromptInput {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            border: 2px solid var(--electric-blue);
+            border-radius: 4px;
+            margin-bottom: var(--space-md);
+        }
+        
+        #customPromptButtons {
+            display: flex;
+            justify-content: flex-end;
+            gap: var(--space-sm);
+        }
+        
+        #customPromptButtons button {
+            width: auto;
+            padding: 10px 24px;
+            margin: 0;
+        }
+        
+        #customPromptOk {
+            background: var(--electric-blue);
+            color: var(--white);
+            border-color: var(--electric-blue);
+        }
+        
+        #customPromptOk:hover {
+            background: #4f739c;
+        }
+        
+        #customPromptCancel {
+            background: transparent;
+            color: var(--steel-blue);
+            border-color: var(--steel-blue);
+        }
+        
+        /* Link buttons for Help and Donate */
+        .link-buttons {
+            display: flex;
+            gap: var(--space-sm);
+            margin-top: var(--space-sm);
+        }
+        
+        .link-btn {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: var(--space-sm) var(--space-md);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: 4px;
+            transition: all 0.15s ease;
+            background: transparent;
+            color: var(--steel-blue);
+            border: 1px solid var(--steel-blue);
+        }
+        
+        .link-btn:hover {
+            background: var(--light-gray);
+        }
+        
+        .link-btn.donate {
+            background: var(--teal-green);
+            color: var(--slate-gray);
+            border-color: var(--teal-green);
+        }
+        
+        .link-btn.donate:hover {
+            background: #7ab3c3;
+        }
+        
+        /* Label full/short switching (desktop default) */
+        .label-short { display: none; }
+        .label-full { display: inline; }
+        
+        /* Mobile-only units section (hidden on desktop) */
+        .mobile-units-section {
+            display: none;
+        }
+        
+        /* Mobile links footer (hidden on desktop) */
+        .mobile-links-footer {
+            display: none;
+        }
+        
+        /* Units section label variants */
+        .units-label-compact {
+            display: none;
+        }
+        
+        /* Canvas watermark (HTML link overlay - text drawn on canvas) */
+        #watermark {
+            position: absolute;
+            bottom: 6px;
+            right: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            text-decoration: none;
+            pointer-events: auto;
+            z-index: 100;
+            padding: 4px 6px;
+        }
+        
+        #watermark span {
+            font-size: 12px;
+            line-height: 1.35;
+            color: transparent;
+        }
+        
+        /* Floating action buttons (canvas overlay, touch devices) */
+        #floatingActions {
+            display: none;
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            z-index: 500;
+            gap: 8px;
+        }
+        
+        .touch-device #floatingActions {
+            display: flex;
+        }
+        
+        #floatingActions button {
+            width: auto;
+            margin: 0;
+            padding: 10px 18px;
+            font-size: 13px;
+            font-weight: 600;
+            border-radius: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+        }
+        
+        #floatingActions .fab-cancel {
+            background: rgba(191, 97, 106, 0.92);
+            color: var(--white);
+            border-color: transparent;
+        }
+        
+        #floatingActions .fab-delete {
+            background: rgba(191, 97, 106, 0.92);
+            color: var(--white);
+            border-color: transparent;
+        }
+        
+        /* Touch loupe / magnifier bubble */
+        #touchLoupe {
+            display: none;
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            border: 2px solid var(--electric-blue);
+            box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+            overflow: hidden;
+            pointer-events: none;
+            z-index: 400;
+        }
+        
+        #touchLoupe canvas {
+            width: 100%;
+            height: 100%;
+        }
+        
+        #touchLoupe::after {
+            content: '+';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 16px;
+            font-weight: 300;
+            color: rgba(94, 129, 172, 0.7);
+            pointer-events: none;
+        }
+
+        /* ============================================================
+           MOBILE RESPONSIVE (max-width: 768px)
+           ============================================================ */
+        @media (max-width: 1200px) {
+            #panel {
+                width: 200px;
+                min-width: 200px;
+            }
+            
+            .tab {
+                padding: 8px 4px;
+                font-size: 11px;
+            }
+            
+            .tab .tab-full { display: none; }
+            .tab .tab-short { display: inline; }
+            
+            #tabContent {
+                padding: var(--space-xs) var(--space-sm);
+            }
+            
+            .section-title {
+                margin-top: var(--space-xs);
+                margin-bottom: 2px;
+                font-size: 11px;
+                padding-bottom: 2px;
+            }
+            
+            .section-title:first-child {
+                margin-top: 0;
+            }
+            
+            .input-group {
+                margin-bottom: var(--space-xs);
+            }
+            
+            .input-row {
+                margin-bottom: var(--space-xs);
+                gap: var(--space-xs);
+            }
+            
+            label {
+                font-size: 11px;
+                margin-bottom: 1px;
+            }
+            
+            input, select {
+                height: 28px;
+                padding: 3px 6px;
+                font-size: 12px;
+            }
+            
+            button {
+                padding: 6px var(--space-sm);
+                font-size: 11px;
+                margin-bottom: var(--space-xs);
+            }
+            
+            .toggle-group button {
+                padding: 6px 4px;
+                font-size: 11px;
+            }
+            
+            .toggle-group {
+                margin-bottom: var(--space-xs);
+            }
+            
+            .input-with-buttons button {
+                width: 34px;
+                height: 34px;
+                min-width: 34px;
+            }
+            
+            .inline-tools-row {
+                flex-direction: column;
+                gap: 2px;
+                align-items: stretch;
+                margin-bottom: var(--space-sm);
+            }
+            
+            .inline-tools-row .snap-mode-group select {
+                height: 32px;
+                font-size: 12px;
+                padding: 4px 6px;
+            }
+            
+            .info-box {
+                display: none;
+            }
+            
+            /* Hide elements not needed on mobile */
+            .mobile-hide {
+                display: none !important;
+            }
+            
+            #btnRecenter {
+                display: none !important;
+            }
+            
+            /* Hide the bottom units section on mobile (moved into Tile Layout tab) */
+            #unitsSection {
+                display: none !important;
+            }
+            
+            /* Show mobile links footer */
+            .mobile-links-footer {
+                display: block;
+                padding: var(--space-xs) var(--space-sm);
+                border-top: 1px solid var(--light-gray);
+            }
+            
+            /* Show mobile units section inside Tile Layout tab */
+            .mobile-units-section {
+                display: block;
+                margin-top: var(--space-sm);
+                padding-top: var(--space-xs);
+                border-top: 1px solid var(--light-gray);
+            }
+            
+            .mobile-units-row {
+                display: flex;
+                align-items: center;
+                gap: var(--space-xs);
+                margin-bottom: var(--space-xs);
+            }
+            
+            .mobile-units-row label {
+                margin-bottom: 0;
+                white-space: nowrap;
+                font-size: 11px;
+            }
+            
+            .mobile-units-row select {
+                flex: 1;
+            }
+            
+            /* Switch offset labels to compact */
+            .label-full { display: none !important; }
+            .label-short { display: inline !important; }
+            
+            /* Inline offset rows: label and input on same row */
+            .offset-row {
+                display: flex;
+                align-items: center;
+                gap: var(--space-xs);
+            }
+            
+            .offset-row label {
+                margin-bottom: 0;
+                white-space: nowrap;
+                min-width: 36px;
+            }
+            
+            .offset-row .input-with-buttons {
+                flex: 1;
+            }
+            
+            /* Tighten units section */
+            #unitsSection {
+                padding: var(--space-xs) var(--space-sm);
+            }
+            
+            #unitsSection .units-title-full {
+                display: none;
+            }
+            
+            .units-label-compact {
+                display: inline !important;
+                margin-bottom: 0;
+                margin-right: var(--space-xs);
+                font-size: 11px;
+                white-space: nowrap;
+            }
+            
+            #unitsRow {
+                display: flex;
+                align-items: center;
+                gap: var(--space-xs);
+                margin-bottom: var(--space-xs);
+            }
+            
+            #unitsRow .input-group {
+                flex: 1;
+                margin-bottom: 0 !important;
+            }
+            
+            #btnRecenter {
+                padding: 5px var(--space-sm) !important;
+                font-size: 11px !important;
+                margin-bottom: 4px !important;
+            }
+            
+            .link-buttons {
+                margin-top: 2px;
+            }
+            
+            .link-btn {
+                padding: 3px var(--space-sm);
+                font-size: 11px;
+            }
+            
+            .combo-dropdown-button {
+                width: 24px;
+                font-size: 9px;
+            }
+            
+            .surface-list {
+                max-height: 80px;
+                padding: var(--space-xs);
+            }
+            
+            .surface-item {
+                padding: 2px var(--space-xs);
+                font-size: 11px;
+            }
+            
+            .hint-text {
+                font-size: 10px;
+                margin: 2px 0;
+            }
+            
+            .checkbox-group {
+                margin-bottom: var(--space-xs);
+            }
+            
+            /* Prompt dialog mobile sizing */
+            #customPromptDialog {
+                min-width: unset;
+                max-width: calc(100vw - 32px);
+                width: calc(100vw - 32px);
+                padding: var(--space-md);
+            }
+            
+            #customPromptInput {
+                font-size: 18px;
+                padding: 10px;
+            }
+            
+        }
+        
+        /* Portrait phones: panel becomes bottom strip */
+        @media (max-width: 500px) {
+            body {
+                flex-direction: column;
+            }
+            
+            #panel {
+                width: 100%;
+                min-width: 100%;
+                max-height: 45vh;
+                border-left: none;
+                border-top: 1px solid var(--steel-blue);
+            }
+            
+            #canvasContainer {
+                min-height: 55vh;
+            }
+        }
+
+        /* On touch devices, hide panel cancel (floating replaces it) */
+        .touch-device #btnCancel {
+            display: none !important;
+        }
+        
+        /* Hidden utility */
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="shiftIndicator">SHIFT: Snap Disabled</div>
+    
+    <div id="customPromptOverlay">
+        <div id="customPromptDialog">
+            <div id="customPromptMessage"></div>
+            <input type="text" id="customPromptInput" inputmode="decimal" />
+            <div id="customPromptButtons">
+                <button id="customPromptCancel">Cancel</button>
+                <button id="customPromptOk">OK</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="canvasContainer">
+        <canvas id="canvas"></canvas>
+        <a id="watermark" href="https://sites.google.com/view/jasoncousineausolutions/feb3_2026_tileplannertool" target="_blank">
+            <span>Tile Planner V1.0</span>
+            <span>Jason Cousineau Solutions Inc.</span>
+        </a>
+        <div id="floatingActions">
+            <button class="fab-cancel hidden" id="fabCancel">✕ Cancel</button>
+            <button class="fab-delete hidden" id="fabDelete">🗑 Delete</button>
+        </div>
+        <div id="touchLoupe">
+            <canvas id="loupeCanvas" width="200" height="200"></canvas>
+        </div>
+    </div>
+    
+    <div id="panel">
+        <div id="tabBar">
+            <button class="tab active" data-tab="tileLayout"><span class="tab-full">Tile Layout</span><span class="tab-short">Tiles</span></button>
+            <button class="tab" data-tab="surfaceDesign"><span class="tab-full">Surface Design</span><span class="tab-short">Surface</span></button>
+            <button class="tab" data-tab="finalize"><span class="tab-full">Finalize</span><span class="tab-short">Finalize</span></button>
+        </div>
+        
+        <div id="tabContent">
+            <div id="tileLayoutTab" class="tab-pane active">
+                <div class="section-title">Tile Dimensions</div>
+                
+                <div class="input-row">
+                    <div class="input-group">
+                        <label id="labelTileWidth">Width:</label>
+                        <input type="text" id="tileWidth" value="24" inputmode="decimal">
+                    </div>
+                    <div class="input-group">
+                        <label id="labelTileHeight">Height:</label>
+                        <input type="text" id="tileHeight" value="12" inputmode="decimal">
+                    </div>
+                </div>
+                
+                <div class="input-row">
+                    <div class="input-group">
+                        <label>Running Bond:</label>
+                        <div class="combo-input-wrapper">
+                            <input type="text" id="bondOffset" value="0" inputmode="decimal">
+                            <button class="combo-dropdown-button" data-dropdown="bond">▼</button>
+                            <div class="combo-dropdown-menu" id="bondDropdownMenu">
+                                <div class="combo-dropdown-item" data-value="0">0 (Stack)</div>
+                                <div class="combo-dropdown-item" data-value="0.25">0.25</div>
+                                <div class="combo-dropdown-item" data-value="0.3333">0.3333</div>
+                                <div class="combo-dropdown-item" data-value="0.5">0.5 (Half)</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label id="labelRotation">Rotation:</label>
+                        <div class="combo-input-wrapper">
+                            <input type="text" id="rotation" value="0" inputmode="decimal">
+                            <button class="combo-dropdown-button" data-dropdown="rotation">▼</button>
+                            <div class="combo-dropdown-menu" id="rotationDropdownMenu">
+                                <div class="combo-dropdown-item" data-value="0">0°</div>
+                                <div class="combo-dropdown-item" data-value="45">45°</div>
+                                <div class="combo-dropdown-item" data-value="90">90°</div>
+                                <div class="combo-dropdown-item" data-value="135">135°</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="input-group">
+                    <label id="labelGroutWidth">Grout Width:</label>
+                    <div class="combo-input-wrapper">
+                        <input type="text" id="groutWidth" value="0" inputmode="decimal">
+                        <button class="combo-dropdown-button" data-dropdown="grout">▼</button>
+                        <div class="combo-dropdown-menu" id="groutDropdownMenu">
+                            <div class="combo-dropdown-item" data-value="0">0</div>
+                            <div class="combo-dropdown-item" data-value="0.0625">1/16"</div>
+                            <div class="combo-dropdown-item" data-value="0.125">1/8"</div>
+                            <div class="combo-dropdown-item" data-value="0.25">1/4"</div>
+                            <div class="combo-dropdown-item" data-value="0.5">1/2"</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="info-box">
+                    <strong>Tip:</strong> Enter measurements with units (e.g., "12mm", "5cm", "3.5"") or use the Display Units setting below.
+                </div>
+                
+                <div class="mobile-units-section">
+                    <div class="mobile-units-row">
+                        <label for="unitModeMobile">Units:</label>
+                        <select id="unitModeMobile">
+                            <option value="metric">Metric (mm)</option>
+                            <option value="decimal2" selected>Inches (0.00")</option>
+                            <option value="decimal3">Inches (0.000")</option>
+                            <option value="eighth">Inches (1/8")</option>
+                            <option value="sixteenth">Inches (1/16")</option>
+                            <option value="thirtysecond">Inches (1/32")</option>
+                            <option value="sixtyfourth">Inches (1/64")</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="surfaceDesignTab" class="tab-pane">
+                <div class="section-title mobile-hide">Mode</div>
+                <div class="toggle-group">
+                    <button id="btnAddLine" class="active">Add Line</button>
+                    <button id="btnIdle">Edit</button>
+                </div>
+                
+                <div id="btnClearAllWrapper">
+                    <button id="btnClearAll" class="danger">Clear All</button>
+                </div>
+                <div id="btnDeleteWrapper" class="hidden">
+                    <button id="btnDelete" class="danger">Delete Selected</button>
+                </div>
+                
+                <div class="inline-tools-row">
+                    <div class="checkbox-group">
+                        <label>
+                            <input type="checkbox" id="distanceTool">
+                            Distance Tool
+                        </label>
+                    </div>
+                    <div class="snap-mode-group">
+                        <select id="snapMode">
+                            <option value="auto" selected>Auto Snap</option>
+                            <option value="aggressive">Aggressive Snap</option>
+                            <option value="off">Snap Disabled</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="section-title mobile-hide">Tile Alignment</div>
+                
+                <div class="input-group offset-row">
+                    <label id="labelOffsetX"><span class="label-full">Offset X:</span><span class="label-short">X Adj.</span></label>
+                    <div class="input-with-buttons">
+                        <button class="offset-btn" data-axis="x" data-dir="-1">−</button>
+                        <input type="text" id="offsetX" value="0" inputmode="decimal">
+                        <button class="offset-btn" data-axis="x" data-dir="1">+</button>
+                    </div>
+                </div>
+                
+                <div class="input-group offset-row">
+                    <label id="labelOffsetY"><span class="label-full">Offset Y:</span><span class="label-short">Y Adj.</span></label>
+                    <div class="input-with-buttons">
+                        <button class="offset-btn" data-axis="y" data-dir="-1">−</button>
+                        <input type="text" id="offsetY" value="0" inputmode="decimal">
+                        <button class="offset-btn" data-axis="y" data-dir="1">+</button>
+                    </div>
+                </div>
+                
+                <div class="info-box">
+                    <strong>Edit Mode:</strong> Click to select, drag to move, Delete to remove.<br><br>
+                    <strong>Add Line:</strong> Click to place vertices. Hold SHIFT to disable snap.<br><br>
+                    <strong>Shortcuts:</strong> Arrow keys adjust tile offset, WASD pans view, Space recenters, Escape cancels.
+                </div>
+            </div>
+            
+            <div id="finalizeTab" class="tab-pane">
+                <div class="section-title">Surfaces</div>
+                
+                <button id="btnDetectSurfaces" class="primary">Detect Surfaces</button>
+                
+                <div id="surfaceList" class="surface-list">
+                    <p class="hint-text">Surfaces will be detected automatically when you switch to this tab.</p>
+                </div>
+                
+                <div class="section-title mobile-hide">Selection</div>
+                <p class="hint-text mobile-hide" id="selectionHint">Click surfaces in the canvas to select/deselect them.</p>
+                
+                <button id="btnClearSurfaceSelection" class="mobile-hide" disabled>Clear Selection</button>
+                <button id="btnSelectAll" class="mobile-hide" disabled>Select All</button>
+                
+                <div class="section-title">Cut Measurements</div>
+                <div class="checkbox-group">
+                    <label>
+                        <input type="checkbox" id="showCutMeasurements" disabled>
+                        Show partial tile measurements
+                    </label>
+                </div>
+            </div>
+            
+            <div id="mobileLinks" class="mobile-links-footer">
+                <div class="link-buttons">
+                    <a href="https://sites.google.com/view/jasoncousineausolutions/feb3_2026_tileplannertool#h.gkb7hrizouuu" target="_blank" class="link-btn">Help</a>
+                    <a href="https://sites.google.com/view/jasoncousineausolutions/feb3_2026_tileplannertool#h.13h408e3kswd" target="_blank" class="link-btn donate">Donate</a>
+                </div>
+            </div>
+        </div>
+        
+        <div id="unitsSection">
+            <button id="btnCancel" class="danger hidden">Cancel</button>
+            <button id="btnRecenter" style="width: 100%; margin-bottom: 10px;">Re-center View</button>
+            <div id="unitsRow">
+                <div class="section-title units-title-full" style="margin-top: 0;">Display Units</div>
+                <label class="units-label-compact" for="unitMode">Units:</label>
+                <div class="input-group" style="margin-bottom: 12px;">
+                    <select id="unitMode">
+                        <option value="metric">Metric (mm)</option>
+                        <option value="decimal2" selected>Inches (0.00")</option>
+                        <option value="decimal3">Inches (0.000")</option>
+                        <option value="eighth">Inches (1/8")</option>
+                        <option value="sixteenth">Inches (1/16")</option>
+                        <option value="thirtysecond">Inches (1/32")</option>
+                        <option value="sixtyfourth">Inches (1/64")</option>
+                    </select>
+                </div>
+            </div>
+            <div class="link-buttons">
+                <a href="https://sites.google.com/view/jasoncousineausolutions/feb3_2026_tileplannertool#h.gkb7hrizouuu" target="_blank" class="link-btn">Help</a>
+                <a href="https://sites.google.com/view/jasoncousineausolutions/feb3_2026_tileplannertool#h.13h408e3kswd" target="_blank" class="link-btn donate">Donate</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ============================================================
+    // CONFIGURATION
+    // ============================================================
+    const CONFIG = {
+        // Display
+        PIXELS_PER_INCH: 10.8,
+        HANDLE_SIZE: 6,
+        
+        // Snap mode presets (in screen pixels)
+        SNAP_MODES: {
+            auto: {
+                SNAP_DISTANCE: 10,
+                EDGE_SELECT_DISTANCE: 20,
+                VERTEX_MERGE_DIST: 10,
+                ANGLE_SNAP_THRESHOLD: 5.0,   // degrees
+                MIN_SEGMENT_LENGTH: 5
+            },
+            aggressive: {
+                SNAP_DISTANCE: 25,
+                EDGE_SELECT_DISTANCE: 40,
+                VERTEX_MERGE_DIST: 25,
+                ANGLE_SNAP_THRESHOLD: 10.0,  // degrees — more forgiving for touch
+                MIN_SEGMENT_LENGTH: 5
+            },
+            off: {
+                SNAP_DISTANCE: 5,
+                EDGE_SELECT_DISTANCE: 10,
+                VERTEX_MERGE_DIST: 0,         // no auto-merge
+                ANGLE_SNAP_THRESHOLD: 0,      // no angle snap
+                MIN_SEGMENT_LENGTH: 3
+            }
+        },
+        
+        COLLINEAR_TOLERANCE: 0.001,
+        
+        // Unit conversions
+        MM_PER_INCH: 25.4,
+        CM_PER_INCH: 2.54,
+        
+        // Zoom limits
+        MIN_ZOOM: 0.1,
+        MAX_ZOOM: 10,
+        ZOOM_FACTOR: 0.1,  // 10% per scroll
+        
+        // Keyboard pan speed (pixels per frame)
+        PAN_SPEED: 6,
+        
+        // Hold-to-repeat for offset buttons
+        HOLD_INITIAL_DELAY: 400,   // ms before repeat starts
+        HOLD_REPEAT_INTERVAL: 80,  // ms between repeats
+        
+        // Colors (Nord-inspired, CAD-friendly)
+        COLORS: {
+            TILE_FILL: '#E5E9F0',
+            TILE_STROKE: '#4C566A',
+            GROUT: '#6C7A8A',
+            LINE_DEFAULT: '#2E3440',
+            LINE_SELECTED: '#5E81AC',
+            LINE_DIMMED: '#A0A8B4',
+            VERTEX_DEFAULT: '#88C0D0',
+            VERTEX_SELECTED: '#5E81AC',
+            VERTEX_MULTI_SELECTED: '#EBCB8B',
+            VERTEX_HOVER: '#88C0D0',
+            VERTEX_DIMMED: '#A0A8B4',
+            PREVIEW_SNAP: 'rgba(94, 129, 172, 0.8)',
+            PREVIEW_NO_SNAP: 'rgba(136, 192, 208, 0.5)',
+            DISTANCE_TOOL: '#EBCB8B',
+            LABEL: '#5E81AC',
+            LABEL_DIMMED: '#8090A0',
+            RECT_SELECT: '#5E81AC',
+            SURFACE_FILLS: [
+                'rgba(94, 129, 172, 0.15)',
+                'rgba(136, 192, 208, 0.15)',
+                'rgba(163, 190, 140, 0.15)',
+                'rgba(235, 203, 139, 0.15)',
+                'rgba(208, 135, 112, 0.15)',
+                'rgba(180, 142, 173, 0.15)',
+                'rgba(191, 97, 106, 0.15)',
+                'rgba(129, 161, 193, 0.15)',
+                'rgba(143, 188, 187, 0.15)',
+                'rgba(168, 153, 132, 0.15)'
+            ],
+            SURFACE_SELECTED: 'rgba(94, 129, 172, 0.25)',
+            SURFACE_HOVER: 'rgba(136, 192, 208, 0.2)',
+            CUT_MEASUREMENT: '#BF616A'
+        },
+        
+        MAX_SURFACES: 10
+    };
+
+    const Mode = {
+        IDLE: 'IDLE',
+        ADD_LINE: 'ADD_LINE',
+        FINALIZE: 'FINALIZE'
+    };
+
+    // ============================================================
+    // UTILITY FUNCTIONS
+    // ============================================================
+    
+    function customPrompt(message, defaultValue) {
+        return new Promise((resolve) => {
+            const overlay = document.getElementById('customPromptOverlay');
+            const messageDiv = document.getElementById('customPromptMessage');
+            const input = document.getElementById('customPromptInput');
+            const okBtn = document.getElementById('customPromptOk');
+            const cancelBtn = document.getElementById('customPromptCancel');
+            
+            messageDiv.textContent = message;
+            input.value = defaultValue || '';
+            overlay.style.display = 'flex';
+            
+            setTimeout(() => {
+                // On touch devices, don't auto-focus (let user tap to open keyboard)
+                const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+                if (!isTouch) {
+                    input.focus();
+                    input.select();
+                }
+            }, 10);
+            
+            const cleanup = (value) => {
+                overlay.style.display = 'none';
+                okBtn.removeEventListener('click', okHandler);
+                cancelBtn.removeEventListener('click', cancelHandler);
+                input.removeEventListener('keydown', keyHandler);
+                overlay.removeEventListener('click', overlayHandler);
+                resolve(value);
+            };
+            
+            const okHandler = () => cleanup(input.value);
+            const cancelHandler = () => cleanup(null);
+            const keyHandler = (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    cleanup(input.value);
+                } else if (e.key === 'Escape') {
+                    cleanup(null);
+                }
+            };
+            const overlayHandler = (e) => {
+                if (e.target === overlay) cleanup(input.value);
+            };
+            
+            okBtn.addEventListener('click', okHandler);
+            cancelBtn.addEventListener('click', cancelHandler);
+            input.addEventListener('keydown', keyHandler);
+            overlay.addEventListener('click', overlayHandler);
+        });
+    }
+
+    function parseUserInput(input, currentUnitMode) {
+        if (!input || typeof input !== 'string') return NaN;
+        let str = input.trim();
+        if (!str) return NaN;
+        
+        let lowerStr = str.toLowerCase().replace(/\s+/g, '');
+        let unitMultiplier = 1.0;
+        let hasExplicitUnit = false;
+        
+        if (lowerStr.endsWith('mm')) {
+            hasExplicitUnit = true;
+            unitMultiplier = 1.0 / CONFIG.MM_PER_INCH;
+            str = str.replace(/\s*mm$/i, '').trim();
+        } else if (lowerStr.endsWith('cm')) {
+            hasExplicitUnit = true;
+            unitMultiplier = 1.0 / CONFIG.CM_PER_INCH;
+            str = str.replace(/\s*cm$/i, '').trim();
+        } else if (str.endsWith('"')) {
+            hasExplicitUnit = true;
+            unitMultiplier = 1.0;
+            str = str.slice(0, -1).trim();
+        } else if (!hasExplicitUnit && currentUnitMode === 'metric') {
+            unitMultiplier = 1.0 / CONFIG.MM_PER_INCH;
+        }
+        
+        str = str.replace(/\s+/g, ' ');
+        
+        const decimalMatch = str.match(/^(-?\d+\.?\d*)$/);
+        if (decimalMatch) return parseFloat(decimalMatch[1]) * unitMultiplier;
+        
+        const mixedMatch = str.match(/^(-?\d+)[\s-]+(\d+)\/(\d+)$/);
+        if (mixedMatch) {
+            const whole = parseInt(mixedMatch[1]);
+            const num = parseInt(mixedMatch[2]);
+            const den = parseInt(mixedMatch[3]);
+            if (den === 0) return NaN;
+            const sign = whole < 0 ? -1 : 1;
+            return (Math.abs(whole) + sign * (num / den)) * unitMultiplier;
+        }
+        
+        const fractionMatch = str.match(/^(-?\d+)\/(\d+)$/);
+        if (fractionMatch) {
+            const num = parseInt(fractionMatch[1]);
+            const den = parseInt(fractionMatch[2]);
+            if (den === 0) return NaN;
+            return (num / den) * unitMultiplier;
+        }
+        
+        return NaN;
+    }
+
+    function formatMeasurement(inches, unitMode) {
+        if (!isFinite(inches)) return '---';
+        if (unitMode === 'metric') return (inches * CONFIG.MM_PER_INCH).toFixed(1) + ' mm';
+        if (unitMode === 'decimal2') return inches.toFixed(2) + '"';
+        if (unitMode === 'decimal3') return inches.toFixed(3) + '"';
+        const denominatorMap = { 'eighth': 8, 'sixteenth': 16, 'thirtysecond': 32, 'sixtyfourth': 64 };
+        return inchesToFraction(inches, denominatorMap[unitMode] || 16);
+    }
+
+    function inchesToFraction(inches, denominator) {
+        const totalSixtyFourths = Math.round(inches * 64);
+        const whole = Math.floor(totalSixtyFourths / 64);
+        const remainder = totalSixtyFourths % 64;
+        if (remainder === 0) return whole + '"';
+        
+        let numerator = Math.round(remainder * (denominator / 64));
+        if (numerator >= denominator) {
+            const extra = Math.floor(numerator / denominator);
+            numerator = numerator % denominator;
+            const newWhole = whole + extra;
+            if (numerator === 0) return newWhole + '"';
+        }
+        
+        const gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
+        const divisor = gcd(numerator, denominator);
+        numerator /= divisor;
+        const simplifiedDenom = denominator / divisor;
+        
+        if (numerator >= simplifiedDenom) {
+            const extra = Math.floor(numerator / simplifiedDenom);
+            numerator = numerator % simplifiedDenom;
+            const finalWhole = whole + extra;
+            if (numerator === 0) return finalWhole + '"';
+            return `${finalWhole} ${numerator}/${simplifiedDenom}"`;
+        }
+        
+        if (numerator === 0) return whole + '"';
+        if (whole === 0) return `${numerator}/${simplifiedDenom}"`;
+        return `${whole} ${numerator}/${simplifiedDenom}"`;
+    }
+
+    // ============================================================
+    // GEOMETRY UTILITIES
+    // ============================================================
+
+    function distance(p1, p2) {
+        const dx = p1.x - p2.x, dy = p1.y - p2.y;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function pointToLineDistance(pt, lineStart, lineEnd) {
+        const A = pt.x - lineStart.x, B = pt.y - lineStart.y;
+        const C = lineEnd.x - lineStart.x, D = lineEnd.y - lineStart.y;
+        const dot = A * C + B * D, lenSq = C * C + D * D;
+        let param = lenSq !== 0 ? dot / lenSq : -1;
+        let xx, yy;
+        if (param < 0) { xx = lineStart.x; yy = lineStart.y; }
+        else if (param > 1) { xx = lineEnd.x; yy = lineEnd.y; }
+        else { xx = lineStart.x + param * C; yy = lineStart.y + param * D; }
+        return Math.sqrt((pt.x - xx) ** 2 + (pt.y - yy) ** 2);
+    }
+
+    function lineSegmentIntersection(p1, p2, p3, p4) {
+        const denom = (p1.x - p2.x) * (p3.y - p4.y) - (p1.y - p2.y) * (p3.x - p4.x);
+        if (Math.abs(denom) < 0.0001) return null;
+        const t = ((p1.x - p3.x) * (p3.y - p4.y) - (p1.y - p3.y) * (p3.x - p4.x)) / denom;
+        const u = -((p1.x - p2.x) * (p1.y - p3.y) - (p1.y - p2.y) * (p1.x - p3.x)) / denom;
+        if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+            return { x: p1.x + t * (p2.x - p1.x), y: p1.y + t * (p2.y - p1.y) };
+        }
+        return null;
+    }
+
+    function adjustLineLength(firstPoint, secondPoint, newLenPx) {
+        const dx = secondPoint.x - firstPoint.x, dy = secondPoint.y - firstPoint.y;
+        const oldLen = Math.hypot(dx, dy);
+        if (oldLen === 0) return { x: firstPoint.x + newLenPx, y: firstPoint.y };
+        const scale = newLenPx / oldLen;
+        return { x: firstPoint.x + dx * scale, y: firstPoint.y + dy * scale };
+    }
+
+    function projectPointOntoSegment(pt, lineStart, lineEnd) {
+        const dx = lineEnd.x - lineStart.x, dy = lineEnd.y - lineStart.y;
+        const lenSq = dx * dx + dy * dy;
+        if (lenSq === 0) return null;
+        const t = ((pt.x - lineStart.x) * dx + (pt.y - lineStart.y) * dy) / lenSq;
+        if (t < 0 || t > 1) return null;
+        return { t, point: { x: lineStart.x + t * dx, y: lineStart.y + t * dy } };
+    }
+
+    function checkCollinear(p1, p2, p3, p4) {
+        const d1x = p2.x - p1.x, d1y = p2.y - p1.y;
+        const len1 = Math.hypot(d1x, d1y);
+        if (len1 === 0) return null;
+        const nx = d1x / len1, ny = d1y / len1;
+        const cross3 = (p3.x - p1.x) * ny - (p3.y - p1.y) * nx;
+        const cross4 = (p4.x - p1.x) * ny - (p4.y - p1.y) * nx;
+        const tolerance = CONFIG.COLLINEAR_TOLERANCE * Math.max(len1, 1);
+        if (Math.abs(cross3) > tolerance || Math.abs(cross4) > tolerance) return null;
+        const proj1 = 0, proj2 = len1;
+        const proj3 = (p3.x - p1.x) * nx + (p3.y - p1.y) * ny;
+        const proj4 = (p4.x - p1.x) * nx + (p4.y - p1.y) * ny;
+        const newMin = Math.min(proj3, proj4), newMax = Math.max(proj3, proj4);
+        const overlapStart = Math.max(proj1, newMin), overlapEnd = Math.min(proj2, newMax);
+        if (overlapStart >= overlapEnd - 5) return null;
+        return { isCollinear: true };
+    }
+
+    function lineIntersectionParams(p1, p2, p3, p4) {
+        const denom = (p1.x - p2.x) * (p3.y - p4.y) - (p1.y - p2.y) * (p3.x - p4.x);
+        if (Math.abs(denom) < 0.0001) return null;
+        const t = ((p1.x - p3.x) * (p3.y - p4.y) - (p1.y - p3.y) * (p3.x - p4.x)) / denom;
+        const u = -((p1.x - p2.x) * (p1.y - p3.y) - (p1.y - p2.y) * (p1.x - p3.x)) / denom;
+        return { t, u };
+    }
+
+    function vectorAngleDegrees(dx, dy) {
+        let angleDeg = Math.abs(Math.atan2(dy, dx) * 180 / Math.PI);
+        if (angleDeg > 180) angleDeg = 360 - angleDeg;
+        return angleDeg;
+    }
+
+    function lineAngleCloseToAxis(p1, p2, threshold) {
+        const dx = p2.x - p1.x, dy = p2.y - p1.y;
+        if (dx === 0 && dy === 0) return false;
+        const angle = vectorAngleDegrees(dx, dy);
+        return Math.abs(angle) <= threshold || Math.abs(angle - 180) <= threshold || Math.abs(angle - 90) <= threshold;
+    }
+
+    function snapToAxis(fixedPoint, movingPoint, threshold) {
+        const dx = movingPoint.x - fixedPoint.x, dy = movingPoint.y - fixedPoint.y;
+        const dist = Math.hypot(dx, dy);
+        const angle = vectorAngleDegrees(dx, dy);
+        if (Math.abs(angle) <= threshold || Math.abs(angle - 180) <= threshold) {
+            return { x: fixedPoint.x + (dx >= 0 ? 1 : -1) * dist, y: fixedPoint.y };
+        }
+        if (Math.abs(angle - 90) <= threshold) {
+            return { x: fixedPoint.x, y: fixedPoint.y + (dy >= 0 ? 1 : -1) * dist };
+        }
+        return movingPoint;
+    }
+
+    // ============================================================
+    // MAIN APPLICATION CLASS
+    // ============================================================
+    
+    class TileApp {
+        constructor() {
+            this.canvas = document.getElementById('canvas');
+            this.ctx = this.canvas.getContext('2d');
+            this.container = document.getElementById('canvasContainer');
+            
+            // Geometry data
+            this.vertices = [];
+            this.lines = [];
+            
+            // Tile settings (inches)
+            this.tileWidthInches = 24.0;
+            this.tileHeightInches = 12.0;
+            this.groutWidthInches = 0.0;
+            this.bondOffset = 0.0;
+            this.rotationDegrees = 0;
+            this.offsetXInches = 0.0;
+            this.offsetYInches = 0.0;
+            
+            // UI state
+            this.mode = Mode.ADD_LINE;
+            this.distanceToolEnabled = false;
+            this.unitMode = 'decimal2';
+            this.currentTab = 'tileLayout';
+            this.snapMode = 'auto';
+            
+            // Selection state
+            this.selectedVertex = null;
+            this.selectedLine = null;
+            this.selectedVertices = [];
+            
+            // Original positions for cancel/undo
+            this.originalPositions = null;  // Map: vertexIdx -> {x, y}
+            
+            // Interaction state
+            this.isDragging = false;
+            this.dragStart = null;
+            this.firstVertex = null;
+            this.hoverVertex = null;
+            this.hoverLine = null;
+            this.mousePos = null;
+            this.shiftHeld = false;
+            this.isRectSelecting = false;
+            this.rectStart = null;
+            this.rectEnd = null;
+            
+            // Line drawing state (for cancel)
+            this.isAwaitingLengthPrompt = false;
+            this.pendingLineEndVertex = null;
+            this.firstVertexWasNew = false;  // true if firstVertex was created by the click (not existing)
+            
+            // View state
+            this.zoom = 1.0;
+            this.panX = 0;
+            this.panY = 0;
+            
+            // Keyboard pan state
+            this.keysHeld = new Set();
+            this.panAnimFrame = null;
+            
+            // Hold-to-repeat for offset buttons
+            this.holdTimer = null;
+            this.holdInterval = null;
+            
+            // Touch state
+            this.touches = {};
+            this.lastTouchDist = null;
+            this.lastTouchCenter = null;
+            this.isTouchPanning = false;
+            this.touchStartPos = null;
+            this.touchDragged = false;
+            
+            // Mobile detection & loupe
+            this.isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+            this.loupeEl = document.getElementById('touchLoupe');
+            this.loupeCtx = document.getElementById('loupeCanvas').getContext('2d');
+            this.loupeVisible = false;
+            this.activeTouchId = null;  // track the drawing finger
+            
+            // Surface detection state
+            this.detectedSurfaces = [];
+            this.selectedSurfaces = [];
+            this.hoverSurface = null;
+            this.showCutMeasurements = false;
+            
+            // Initialize
+            this.setupCanvas();
+            this.bindEvents();
+            this.updateModeButtons();
+            this.updateFieldLabels();
+            this.updateCancelButton();
+            this.updateDeleteButton();
+            
+            // Auto-set aggressive snap on touch devices and add body class
+            if (this.isMobile) {
+                this.snapMode = 'aggressive';
+                document.getElementById('snapMode').value = 'aggressive';
+                document.body.classList.add('touch-device');
+            }
+        }
+
+        // --------------------------------------------------------
+        // SNAP SETTINGS GETTERS
+        // --------------------------------------------------------
+        
+        getSnapSettings() {
+            if (this.shiftHeld) return CONFIG.SNAP_MODES.off;
+            return CONFIG.SNAP_MODES[this.snapMode] || CONFIG.SNAP_MODES.auto;
+        }
+        
+        getSnapDistance() { return this.getSnapSettings().SNAP_DISTANCE; }
+        getEdgeSelectDistance() { return this.getSnapSettings().EDGE_SELECT_DISTANCE; }
+        getVertexMergeDist() { return this.getSnapSettings().VERTEX_MERGE_DIST; }
+        getAngleSnapThreshold() { return this.getSnapSettings().ANGLE_SNAP_THRESHOLD; }
+        getMinSegmentLength() { return this.getSnapSettings().MIN_SEGMENT_LENGTH; }
+
+        // --------------------------------------------------------
+        // INITIALIZATION
+        // --------------------------------------------------------
+
+        setupCanvas() {
+            const resize = () => {
+                const w = this.container.clientWidth;
+                const h = this.container.clientHeight;
+                if (w > 0 && h > 0) {
+                    this.canvas.width = w;
+                    this.canvas.height = h;
+                    this.redraw();
+                }
+            };
+            // ResizeObserver fires reliably after layout settles (including orientation changes)
+            if (typeof ResizeObserver !== 'undefined') {
+                new ResizeObserver(resize).observe(this.container);
+            } else {
+                window.addEventListener('resize', resize);
+            }
+            resize();
+        }
+
+        bindEvents() {
+            // Canvas mouse events
+            this.canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
+            this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
+            this.canvas.addEventListener('mouseup', (e) => this.onMouseUp(e));
+            this.canvas.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
+            
+            // Canvas touch events
+            this.canvas.addEventListener('touchstart', (e) => this.onTouchStart(e), { passive: false });
+            this.canvas.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
+            this.canvas.addEventListener('touchend', (e) => this.onTouchEnd(e), { passive: false });
+            this.canvas.addEventListener('touchcancel', (e) => this.onTouchEnd(e), { passive: false });
+            
+            // Keyboard events
+            document.addEventListener('keydown', (e) => this.onKeyDown(e));
+            document.addEventListener('keyup', (e) => this.onKeyUp(e));
+            
+            // Tab switching
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', (e) => this.switchTab(e.currentTarget.dataset.tab, e.currentTarget));
+            });
+            
+            // Mode buttons
+            document.getElementById('btnIdle').addEventListener('click', () => this.setMode(Mode.IDLE));
+            document.getElementById('btnAddLine').addEventListener('click', () => this.setMode(Mode.ADD_LINE));
+            
+            // Clear All / Delete buttons
+            document.getElementById('btnClearAll').addEventListener('click', () => this.clearAll());
+            document.getElementById('btnDelete').addEventListener('click', () => this.deleteSelected());
+            
+            // Cancel button (panel)
+            document.getElementById('btnCancel').addEventListener('click', () => this.cancelAction());
+            
+            // Floating action buttons (mobile)
+            document.getElementById('fabCancel').addEventListener('click', (e) => { e.stopPropagation(); this.cancelAction(); });
+            document.getElementById('fabDelete').addEventListener('click', (e) => { e.stopPropagation(); this.deleteSelected(); });
+            
+            // Snap mode
+            document.getElementById('snapMode').addEventListener('change', (e) => {
+                this.snapMode = e.target.value;
+                this.redraw();
+            });
+            
+            // Distance tool
+            document.getElementById('distanceTool').addEventListener('change', (e) => {
+                this.distanceToolEnabled = e.target.checked;
+                this.redraw();
+            });
+            
+            // Unit selector
+            document.getElementById('unitMode').addEventListener('change', () => {
+                document.getElementById('unitModeMobile').value = document.getElementById('unitMode').value;
+                this.changeUnits();
+            });
+            // Mobile unit selector (syncs back to main)
+            document.getElementById('unitModeMobile').addEventListener('change', () => {
+                document.getElementById('unitMode').value = document.getElementById('unitModeMobile').value;
+                this.changeUnits();
+            });
+            
+            // Tile settings inputs
+            ['tileWidth', 'tileHeight', 'groutWidth', 'offsetX', 'offsetY'].forEach(id => {
+                document.getElementById(id).addEventListener('input', () => this.updateTileSettings());
+            });
+            document.getElementById('bondOffset').addEventListener('input', () => this.updateBondOffset());
+            document.getElementById('rotation').addEventListener('input', () => this.updateRotation());
+            
+            // Offset buttons with hold-to-repeat
+            document.querySelectorAll('.offset-btn').forEach(btn => {
+                const axis = btn.dataset.axis;
+                const dir = parseInt(btn.dataset.dir);
+                
+                const doAdjust = () => this.adjustOffset(axis, dir);
+                
+                // Mouse hold
+                btn.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    doAdjust();
+                    this.startHoldRepeat(doAdjust);
+                });
+                btn.addEventListener('mouseup', () => this.stopHoldRepeat());
+                btn.addEventListener('mouseleave', () => this.stopHoldRepeat());
+                
+                // Touch hold
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    doAdjust();
+                    this.startHoldRepeat(doAdjust);
+                });
+                btn.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    this.stopHoldRepeat();
+                });
+                btn.addEventListener('touchcancel', () => this.stopHoldRepeat());
+            });
+            
+            // Re-center
+            document.getElementById('btnRecenter').addEventListener('click', () => this.recenterView());
+            
+            // Dropdown buttons and items
+            document.querySelectorAll('.combo-dropdown-button').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.toggleDropdown(btn.dataset.dropdown);
+                });
+            });
+            
+            document.querySelectorAll('.combo-dropdown-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    const menu = item.closest('.combo-dropdown-menu');
+                    const wrapper = item.closest('.combo-input-wrapper');
+                    const input = wrapper.querySelector('input');
+                    const value = parseFloat(item.dataset.value);
+                    input.value = item.dataset.value;
+                    menu.classList.remove('show');
+                    if (input.id === 'bondOffset') this.bondOffset = value;
+                    else if (input.id === 'rotation') this.rotationDegrees = value;
+                    else if (input.id === 'groutWidth') {
+                        this.groutWidthInches = value;
+                        if (this.unitMode === 'metric') input.value = (value * CONFIG.MM_PER_INCH).toFixed(1);
+                    }
+                    this.redraw();
+                });
+            });
+            
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.combo-input-wrapper')) {
+                    document.querySelectorAll('.combo-dropdown-menu').forEach(m => m.classList.remove('show'));
+                }
+            });
+            
+            // Finalize tab buttons
+            document.getElementById('btnDetectSurfaces').addEventListener('click', () => this.detectSurfaces());
+            document.getElementById('btnClearSurfaceSelection').addEventListener('click', () => this.clearSurfaceSelection());
+            document.getElementById('btnSelectAll').addEventListener('click', () => this.selectAllSurfaces());
+            document.getElementById('showCutMeasurements').addEventListener('change', (e) => {
+                this.showCutMeasurements = e.target.checked;
+                this.redraw();
+            });
+        }
+
+        // --------------------------------------------------------
+        // HOLD-TO-REPEAT
+        // --------------------------------------------------------
+        
+        startHoldRepeat(action) {
+            this.stopHoldRepeat();
+            this.holdTimer = setTimeout(() => {
+                this.holdInterval = setInterval(action, CONFIG.HOLD_REPEAT_INTERVAL);
+            }, CONFIG.HOLD_INITIAL_DELAY);
+        }
+        
+        stopHoldRepeat() {
+            if (this.holdTimer) { clearTimeout(this.holdTimer); this.holdTimer = null; }
+            if (this.holdInterval) { clearInterval(this.holdInterval); this.holdInterval = null; }
+        }
+
+        // --------------------------------------------------------
+        // COORDINATE CONVERSION
+        // --------------------------------------------------------
+
+        screenToWorld(screenX, screenY) {
+            return {
+                x: (screenX - this.panX) / this.zoom,
+                y: (screenY - this.panY) / this.zoom
+            };
+        }
+
+        worldToScreen(worldPt) {
+            return {
+                x: worldPt.x * this.zoom + this.panX,
+                y: worldPt.y * this.zoom + this.panY
+            };
+        }
+
+        getMousePos(e) {
+            const rect = this.canvas.getBoundingClientRect();
+            return this.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+        }
+
+        getVisibleWorldBounds() {
+            const topLeft = this.screenToWorld(0, 0);
+            const bottomRight = this.screenToWorld(this.canvas.width, this.canvas.height);
+            return {
+                minX: topLeft.x, minY: topLeft.y,
+                maxX: bottomRight.x, maxY: bottomRight.y,
+                width: bottomRight.x - topLeft.x, height: bottomRight.y - topLeft.y
+            };
+        }
+
+        // --------------------------------------------------------
+        // CANCEL / UNDO
+        // --------------------------------------------------------
+        
+        /** Store original positions of currently selected vertices for cancel */
+        storeOriginalPositions() {
+            this.originalPositions = new Map();
+            const indicesToStore = [];
+            
+            if (this.selectedVertex !== null) {
+                indicesToStore.push(this.selectedVertex);
+            }
+            if (this.selectedLine !== null) {
+                const [v1, v2] = this.lines[this.selectedLine];
+                indicesToStore.push(v1, v2);
+            }
+            if (this.selectedVertices.length > 0) {
+                indicesToStore.push(...this.selectedVertices);
+            }
+            
+            for (const idx of indicesToStore) {
+                const v = this.vertices[idx];
+                this.originalPositions.set(idx, { x: v.x, y: v.y });
+            }
+        }
+        
+        /** Cancel current action: restore positions or abort line drawing */
+        cancelAction() {
+            // If drawing a line (first vertex placed but not completed)
+            if (this.mode === Mode.ADD_LINE && this.firstVertex !== null) {
+                // If the first vertex was newly created and has no other connections, remove it
+                if (this.firstVertexWasNew && this.firstVertex < this.vertices.length) {
+                    const vIdx = this.firstVertex;
+                    const hasConnections = this.lines.some(([a, b]) => a === vIdx || b === vIdx);
+                    if (!hasConnections) {
+                        this.vertices.splice(vIdx, 1);
+                        this.remapIndicesAfterDelete(vIdx);
+                    }
+                }
+                this.firstVertex = null;
+                this.firstVertexWasNew = false;
+                this.mousePos = null;
+                this.hoverVertex = null;
+                this.hoverLine = null;
+                this.updateCancelButton();
+                this.redraw();
+                return;
+            }
+            
+            // If something is selected, restore original positions and deselect
+            if (this.hasSelection() && this.originalPositions && this.originalPositions.size > 0) {
+                for (const [idx, pos] of this.originalPositions) {
+                    if (idx < this.vertices.length) {
+                        this.vertices[idx].x = pos.x;
+                        this.vertices[idx].y = pos.y;
+                    }
+                }
+            }
+            
+            this.clearSelection();
+            this.originalPositions = null;
+            this.isDragging = false;
+            this.updateCancelButton();
+            this.updateDeleteButton();
+            this.redraw();
+        }
+        
+        /** Update cancel button visibility (panel + floating) */
+        updateCancelButton() {
+            const shouldShow = this.hasSelection() || 
+                              (this.mode === Mode.ADD_LINE && this.firstVertex !== null);
+            document.getElementById('btnCancel').classList.toggle('hidden', !shouldShow);
+            document.getElementById('fabCancel').classList.toggle('hidden', !shouldShow);
+        }
+        
+        /** Update delete/clear-all button visibility (panel + floating) */
+        updateDeleteButton() {
+            const clearWrapper = document.getElementById('btnClearAllWrapper');
+            const deleteWrapper = document.getElementById('btnDeleteWrapper');
+            const hasSel = this.hasSelection();
+            clearWrapper.classList.toggle('hidden', hasSel);
+            deleteWrapper.classList.toggle('hidden', !hasSel);
+            document.getElementById('fabDelete').classList.toggle('hidden', !hasSel || this.mode !== Mode.IDLE);
+        }
+
+        // --------------------------------------------------------
+        // SELECTION MANAGEMENT
+        // --------------------------------------------------------
+
+        clearSelection() {
+            this.selectedVertex = null;
+            this.selectedLine = null;
+            this.selectedVertices = [];
+            this.hoverVertex = null;
+            this.hoverLine = null;
+            this.originalPositions = null;
+        }
+
+        hasSelection() {
+            return this.selectedVertex !== null || 
+                   this.selectedLine !== null || 
+                   this.selectedVertices.length > 0;
+        }
+
+        // --------------------------------------------------------
+        // VERTEX/LINE MANAGEMENT
+        // --------------------------------------------------------
+
+        remapIndicesAfterDelete(deletedIndex) {
+            this.lines = this.lines.map(([v1, v2]) => [
+                v1 > deletedIndex ? v1 - 1 : v1,
+                v2 > deletedIndex ? v2 - 1 : v2
+            ]);
+        }
+
+        deleteVertex(vIdx) {
+            this.lines = this.lines.filter(([v1, v2]) => v1 !== vIdx && v2 !== vIdx);
+            this.vertices.splice(vIdx, 1);
+            this.remapIndicesAfterDelete(vIdx);
+        }
+
+        findVertexAt(pos) {
+            const threshold = this.getSnapDistance() / this.zoom;
+            for (let i = 0; i < this.vertices.length; i++) {
+                if (distance(pos, this.vertices[i]) <= threshold) return i;
+            }
+            return null;
+        }
+
+        findLineAt(pos) {
+            const threshold = this.getEdgeSelectDistance() / this.zoom;
+            for (let i = 0; i < this.lines.length; i++) {
+                const [v1, v2] = this.lines[i];
+                if (pointToLineDistance(pos, this.vertices[v1], this.vertices[v2]) <= threshold) return i;
+            }
+            return null;
+        }
+
+        findVertexToMerge(vIdx) {
+            const threshold = this.getVertexMergeDist() / this.zoom;
+            if (threshold <= 0) return null;
+            const p = this.vertices[vIdx];
+            for (let i = 0; i < this.vertices.length; i++) {
+                if (i === vIdx) continue;
+                if (distance(p, this.vertices[i]) <= threshold) return i;
+            }
+            return null;
+        }
+
+        mergeVertices(srcIdx, dstIdx) {
+            this.lines = this.lines.map(([a, b]) => [
+                a === srcIdx ? dstIdx : a,
+                b === srcIdx ? dstIdx : b
+            ]);
+            const lineSet = new Set();
+            this.lines = this.lines.filter(([a, b]) => {
+                if (a === b) return false;
+                const key = a < b ? `${a}-${b}` : `${b}-${a}`;
+                if (lineSet.has(key)) return false;
+                lineSet.add(key);
+                return true;
+            });
+            this.vertices.splice(srcIdx, 1);
+            this.remapIndicesAfterDelete(srcIdx);
+            if (this.selectedVertex === srcIdx) {
+                this.selectedVertex = dstIdx > srcIdx ? dstIdx - 1 : dstIdx;
+            } else if (this.selectedVertex !== null && this.selectedVertex > srcIdx) {
+                this.selectedVertex--;
+            }
+        }
+
+        // --------------------------------------------------------
+        // LINE SPLITTING
+        // --------------------------------------------------------
+
+        getOrCreateVertex(pos) {
+            const threshold = this.getSnapDistance() / this.zoom;
+            for (let i = 0; i < this.vertices.length; i++) {
+                if (distance(pos, this.vertices[i]) <= threshold) return i;
+            }
+            this.vertices.push({ x: pos.x, y: pos.y });
+            return this.vertices.length - 1;
+        }
+
+        splitLineAt(lineIdx, splitPoint) {
+            const [v1, v2] = this.lines[lineIdx];
+            const p1 = this.vertices[v1], p2 = this.vertices[v2];
+            const proj = projectPointOntoSegment(splitPoint, p1, p2);
+            const actual = proj ? proj.point : splitPoint;
+            const threshold = this.getSnapDistance() / this.zoom;
+            if (distance(actual, p1) <= threshold) return v1;
+            if (distance(actual, p2) <= threshold) return v2;
+            const minSeg = this.getMinSegmentLength();
+            if (distance(actual, p1) < minSeg) return v1;
+            if (distance(actual, p2) < minSeg) return v2;
+            const newIdx = this.vertices.length;
+            this.vertices.push({ x: actual.x, y: actual.y });
+            this.lines.splice(lineIdx, 1);
+            this.lines.push([v1, newIdx]);
+            this.lines.push([newIdx, v2]);
+            return newIdx;
+        }
+
+        findLineContainingPoint(pos, excludeLines = []) {
+            const threshold = this.getSnapDistance() / this.zoom;
+            for (let i = 0; i < this.lines.length; i++) {
+                if (excludeLines.includes(i)) continue;
+                const [v1, v2] = this.lines[i];
+                const p1 = this.vertices[v1], p2 = this.vertices[v2];
+                if (pointToLineDistance(pos, p1, p2) <= threshold) {
+                    const lineLen = distance(p1, p2);
+                    if (distance(pos, p1) <= lineLen + threshold && distance(pos, p2) <= lineLen + threshold) return i;
+                }
+            }
+            return null;
+        }
+
+        processNewLineIntersections(newV1, newV2) {
+            const p1 = this.vertices[newV1], p2 = this.vertices[newV2];
+            const intersections = [];
+            const existingLineCount = this.lines.length;
+            
+            for (let i = existingLineCount - 1; i >= 0; i--) {
+                const [ev1, ev2] = this.lines[i];
+                if (ev1 === newV1 || ev1 === newV2 || ev2 === newV1 || ev2 === newV2) continue;
+                const ep1 = this.vertices[ev1], ep2 = this.vertices[ev2];
+                if (checkCollinear(ep1, ep2, p1, p2)) continue;
+                const params = lineIntersectionParams(p1, p2, ep1, ep2);
+                if (params && params.t > 0.001 && params.t < 0.999 && params.u > 0.001 && params.u < 0.999) {
+                    intersections.push({
+                        t: params.t,
+                        point: { x: p1.x + params.t * (p2.x - p1.x), y: p1.y + params.t * (p2.y - p1.y) },
+                        existingLineIdx: i
+                    });
+                }
+            }
+            
+            // T-junction at endpoints
+            const lineAtP1 = this.findLineContainingPoint(p1, []);
+            if (lineAtP1 !== null) {
+                const [lv1, lv2] = this.lines[lineAtP1];
+                if (lv1 !== newV1 && lv2 !== newV1) this.splitLineAt(lineAtP1, p1);
+            }
+            const lineAtP2 = this.findLineContainingPoint(p2, []);
+            if (lineAtP2 !== null) {
+                const [lv1, lv2] = this.lines[lineAtP2];
+                if (lv1 !== newV2 && lv2 !== newV2) this.splitLineAt(lineAtP2, p2);
+            }
+            
+            if (intersections.length === 0) return [[newV1, newV2]];
+            
+            intersections.sort((a, b) => a.t - b.t);
+            const splitVertices = [newV1];
+            
+            for (const intersection of intersections) {
+                let currentLineIdx = -1;
+                for (let i = 0; i < this.lines.length; i++) {
+                    const [v1, v2] = this.lines[i];
+                    if (pointToLineDistance(intersection.point, this.vertices[v1], this.vertices[v2]) < this.getSnapDistance()) {
+                        currentLineIdx = i;
+                        break;
+                    }
+                }
+                if (currentLineIdx !== -1) splitVertices.push(this.splitLineAt(currentLineIdx, intersection.point));
+            }
+            
+            splitVertices.push(newV2);
+            const newSegments = [];
+            for (let i = 0; i < splitVertices.length - 1; i++) {
+                if (splitVertices[i] !== splitVertices[i + 1]) newSegments.push([splitVertices[i], splitVertices[i + 1]]);
+            }
+            return newSegments;
+        }
+
+        removeDuplicateLines() {
+            const lineSet = new Set();
+            this.lines = this.lines.filter(([a, b]) => {
+                if (a === b) return false;
+                const key = a < b ? `${a}-${b}` : `${b}-${a}`;
+                if (lineSet.has(key)) return false;
+                lineSet.add(key);
+                return true;
+            });
+        }
+
+        // --------------------------------------------------------
+        // SURFACE DETECTION
+        // --------------------------------------------------------
+
+        buildAdjacencyList() {
+            const adj = new Map();
+            for (let i = 0; i < this.vertices.length; i++) adj.set(i, []);
+            for (const [v1, v2] of this.lines) { adj.get(v1).push(v2); adj.get(v2).push(v1); }
+            return adj;
+        }
+
+        findAllCycles() {
+            const adj = this.buildAdjacencyList();
+            const cycles = [];
+            const usedEdges = new Set();
+            
+            const sortedAdj = new Map();
+            for (const [v, neighbors] of adj) {
+                const vPos = this.vertices[v];
+                sortedAdj.set(v, neighbors.slice().sort((a, b) => {
+                    const aPos = this.vertices[a], bPos = this.vertices[b];
+                    return Math.atan2(aPos.y - vPos.y, aPos.x - vPos.x) - Math.atan2(bPos.y - vPos.y, bPos.x - vPos.x);
+                }));
+            }
+            
+            for (const [v1, v2] of this.lines) {
+                for (const [start, next] of [[v1, v2], [v2, v1]]) {
+                    const edgeKey = `${start}-${next}`;
+                    if (usedEdges.has(edgeKey)) continue;
+                    const cycle = this.traceCycle(start, next, sortedAdj, usedEdges);
+                    if (cycle && cycle.length >= 3) {
+                        const uniqueVerts = new Set(cycle.slice(0, -1));
+                        if (uniqueVerts.size === cycle.length - 1) {
+                            const area = this.calculateSignedArea(cycle.slice(0, -1));
+                            if (area > 0) cycles.push(cycle.slice(0, -1));
+                        }
+                    }
+                }
+            }
+            return this.deduplicateCycles(cycles);
+        }
+
+        traceCycle(start, next, sortedAdj, usedEdges) {
+            const cycle = [start];
+            let current = start, nextVertex = next;
+            for (let step = 0; step < this.vertices.length + 1; step++) {
+                cycle.push(nextVertex);
+                usedEdges.add(`${current}-${nextVertex}`);
+                if (nextVertex === start) return cycle;
+                const neighbors = sortedAdj.get(nextVertex);
+                if (!neighbors || neighbors.length < 2) return null;
+                const idx = neighbors.indexOf(current);
+                if (idx === -1) return null;
+                const nextIdx = (idx - 1 + neighbors.length) % neighbors.length;
+                current = nextVertex;
+                nextVertex = neighbors[nextIdx];
+            }
+            return null;
+        }
+
+        calculateSignedArea(vertexIndices) {
+            let area = 0;
+            const n = vertexIndices.length;
+            for (let i = 0; i < n; i++) {
+                const j = (i + 1) % n;
+                const pi = this.vertices[vertexIndices[i]], pj = this.vertices[vertexIndices[j]];
+                area += pi.x * pj.y - pj.x * pi.y;
+            }
+            return area / 2;
+        }
+
+        deduplicateCycles(cycles) {
+            const unique = [], seen = new Set();
+            for (const cycle of cycles) {
+                const key = this.getCycleKey(cycle);
+                if (!seen.has(key)) { seen.add(key); unique.push(cycle); }
+            }
+            return unique;
+        }
+
+        getCycleKey(cycle) {
+            if (cycle.length === 0) return '';
+            let minIdx = 0;
+            for (let i = 1; i < cycle.length; i++) if (cycle[i] < cycle[minIdx]) minIdx = i;
+            const forward = [], backward = [];
+            for (let i = 0; i < cycle.length; i++) {
+                forward.push(cycle[(minIdx + i) % cycle.length]);
+                backward.push(cycle[(minIdx - i + cycle.length) % cycle.length]);
+            }
+            const f = forward.join(','), b = backward.join(',');
+            return f < b ? f : b;
+        }
+
+        detectSurfaces() {
+            const rawCycles = this.findAllCycles();
+            this.detectedSurfaces = this.buildSurfacesWithHoles(rawCycles);
+            this.selectedSurfaces = [];
+            this.hoverSurface = null;
+            if (this.detectedSurfaces.length > CONFIG.MAX_SURFACES) this.detectedSurfaces = this.detectedSurfaces.slice(0, CONFIG.MAX_SURFACES);
+            this.detectedSurfaces.sort((a, b) => {
+                const areaA = a.holes ? Math.abs(this.calculateSignedArea(a.outer)) : Math.abs(this.calculateSignedArea(a));
+                const areaB = b.holes ? Math.abs(this.calculateSignedArea(b.outer)) : Math.abs(this.calculateSignedArea(b));
+                return areaB - areaA;
+            });
+            this.updateSurfaceList();
+            this.updateFinalizeButtons();
+            this.redraw();
+        }
+
+        buildSurfacesWithHoles(cycles) {
+            if (cycles.length === 0) return [];
+            const cycleInfo = cycles.map((cycle, idx) => ({
+                cycle, index: idx,
+                area: Math.abs(this.calculateSignedArea(cycle)),
+                centroid: this.calculateCentroid(cycle)
+            }));
+            cycleInfo.sort((a, b) => b.area - a.area);
+            
+            const hasHolesMap = new Map();
+            const isHoleOf = new Set();
+            
+            for (let i = 0; i < cycleInfo.length; i++) {
+                for (let j = i + 1; j < cycleInfo.length; j++) {
+                    if (this.isPolygonInsidePolygon(cycleInfo[j].cycle, cycleInfo[i].cycle) &&
+                        !this.polygonsShareEdges(cycleInfo[j].cycle, cycleInfo[i].cycle)) {
+                        let isDirectChild = true;
+                        for (let k = i + 1; k < j; k++) {
+                            if (this.isPolygonInsidePolygon(cycleInfo[j].cycle, cycleInfo[k].cycle) &&
+                                this.isPolygonInsidePolygon(cycleInfo[k].cycle, cycleInfo[i].cycle) &&
+                                !this.polygonsShareEdges(cycleInfo[j].cycle, cycleInfo[k].cycle)) {
+                                isDirectChild = false;
+                                break;
+                            }
+                        }
+                        if (isDirectChild) {
+                            if (!hasHolesMap.has(i)) hasHolesMap.set(i, []);
+                            hasHolesMap.get(i).push(cycleInfo[j].cycle);
+                            isHoleOf.add(j);
+                        }
+                    }
+                }
+            }
+            
+            const surfaces = [];
+            for (let i = 0; i < cycleInfo.length; i++) {
+                if (hasHolesMap.has(i)) {
+                    surfaces.push({ outer: cycleInfo[i].cycle, holes: hasHolesMap.get(i) });
+                } else if (!isHoleOf.has(i)) {
+                    surfaces.push(cycleInfo[i].cycle);
+                } else {
+                    surfaces.push(cycleInfo[i].cycle);
+                }
+            }
+            return surfaces;
+        }
+
+        calculateCentroid(vertexIndices) {
+            let cx = 0, cy = 0;
+            for (const idx of vertexIndices) { cx += this.vertices[idx].x; cy += this.vertices[idx].y; }
+            return { x: cx / vertexIndices.length, y: cy / vertexIndices.length };
+        }
+
+        isPolygonInsidePolygon(innerIndices, outerIndices) {
+            for (const idx of innerIndices) {
+                if (!this.pointInPolygon(this.vertices[idx], outerIndices)) return false;
+            }
+            return true;
+        }
+
+        polygonsShareEdges(poly1, poly2) {
+            const edges1 = new Set();
+            for (let i = 0; i < poly1.length; i++) {
+                const a = poly1[i], b = poly1[(i + 1) % poly1.length];
+                edges1.add(a < b ? `${a}-${b}` : `${b}-${a}`);
+            }
+            for (let i = 0; i < poly2.length; i++) {
+                const a = poly2[i], b = poly2[(i + 1) % poly2.length];
+                if (edges1.has(a < b ? `${a}-${b}` : `${b}-${a}`)) return true;
+            }
+            return false;
+        }
+
+        updateSurfaceList() {
+            const listEl = document.getElementById('surfaceList');
+            if (this.detectedSurfaces.length === 0) {
+                listEl.innerHTML = '<p class="hint-text">No closed surfaces found. Make sure your lines form closed shapes.</p>';
+                return;
+            }
+            let html = '';
+            for (let i = 0; i < this.detectedSurfaces.length; i++) {
+                const surface = this.detectedSurfaces[i];
+                const outerBoundary = this.getSurfaceOuterBoundary(surface);
+                const colorIdx = i % CONFIG.COLORS.SURFACE_FILLS.length;
+                const fillColor = CONFIG.COLORS.SURFACE_FILLS[colorIdx].replace('0.2', '0.5');
+                const isSelected = this.selectedSurfaces.includes(i);
+                html += `<div class="surface-item ${isSelected ? 'selected' : ''}" data-surface-idx="${i}">
+                    <span class="surface-checkbox">${isSelected ? '☑' : '☐'}</span>
+                    <div class="surface-color" style="background: ${fillColor}"></div>
+                    <span>Surface ${i + 1} (${outerBoundary.length} sides)</span></div>`;
+            }
+            listEl.innerHTML = html;
+            listEl.querySelectorAll('.surface-item').forEach(item => {
+                item.addEventListener('click', () => this.toggleSurfaceSelection(parseInt(item.dataset.surfaceIdx), true));
+            });
+        }
+
+        updateFinalizeButtons() {
+            const hasSurfaces = this.detectedSurfaces.length > 0;
+            const hasSelection = this.selectedSurfaces.length > 0;
+            document.getElementById('btnClearSurfaceSelection').disabled = !hasSelection;
+            document.getElementById('btnSelectAll').disabled = !hasSurfaces;
+            document.getElementById('showCutMeasurements').disabled = !hasSelection;
+        }
+
+        toggleSurfaceSelection(idx) {
+            const existingIdx = this.selectedSurfaces.indexOf(idx);
+            if (existingIdx >= 0) this.selectedSurfaces.splice(existingIdx, 1);
+            else this.selectedSurfaces.push(idx);
+            this.updateSurfaceList();
+            this.updateFinalizeButtons();
+            this.redraw();
+        }
+
+        clearSurfaceSelection() {
+            this.selectedSurfaces = [];
+            this.updateSurfaceList();
+            this.updateFinalizeButtons();
+            this.redraw();
+        }
+
+        selectAllSurfaces() {
+            this.selectedSurfaces = this.detectedSurfaces.map((_, i) => i);
+            this.updateSurfaceList();
+            this.updateFinalizeButtons();
+            this.redraw();
+        }
+
+        pointInPolygon(point, polygonVertexIndices) {
+            const polygon = polygonVertexIndices.map(i => this.vertices[i]);
+            let inside = false;
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                const xi = polygon[i].x, yi = polygon[i].y, xj = polygon[j].x, yj = polygon[j].y;
+                if (((yi > point.y) !== (yj > point.y)) && (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi))
+                    inside = !inside;
+            }
+            return inside;
+        }
+
+        pointInSurface(point, surface) {
+            if (surface.holes) {
+                if (!this.pointInPolygon(point, surface.outer)) return false;
+                for (const hole of surface.holes) if (this.pointInPolygon(point, hole)) return false;
+                return true;
+            }
+            return this.pointInPolygon(point, surface);
+        }
+
+        getSurfaceOuterBoundary(surface) { return surface.holes ? surface.outer : surface; }
+
+        findSurfaceAt(point) {
+            for (let i = this.detectedSurfaces.length - 1; i >= 0; i--) {
+                if (this.pointInSurface(point, this.detectedSurfaces[i])) return i;
+            }
+            return null;
+        }
+
+        // --------------------------------------------------------
+        // UI STATE MANAGEMENT
+        // --------------------------------------------------------
+
+        switchTab(tabName, tabElement) {
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            tabElement.classList.add('active');
+            document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+            document.getElementById(tabName + 'Tab').classList.add('active');
+            this.currentTab = tabName;
+            if (tabName === 'finalize') { this.setMode(Mode.FINALIZE); this.detectSurfaces(); }
+            else if (tabName === 'surfaceDesign') { if (this.mode === Mode.FINALIZE) this.setMode(Mode.ADD_LINE); }
+            this.redraw();
+        }
+
+        toggleDropdown(dropdownType) {
+            const menuIds = { 'bond': 'bondDropdownMenu', 'rotation': 'rotationDropdownMenu', 'grout': 'groutDropdownMenu' };
+            Object.entries(menuIds).forEach(([key, id]) => {
+                const menu = document.getElementById(id);
+                if (key === dropdownType) menu.classList.toggle('show');
+                else menu.classList.remove('show');
+            });
+        }
+
+        setMode(newMode) {
+            this.mode = newMode;
+            this.firstVertex = null;
+            this.mousePos = null;
+            if (newMode === Mode.ADD_LINE) { this.clearSelection(); this.canvas.style.cursor = 'crosshair'; }
+            else if (newMode === Mode.IDLE) { this.canvas.style.cursor = 'default'; }
+            else if (newMode === Mode.FINALIZE) { this.canvas.style.cursor = 'pointer'; this.hoverSurface = null; }
+            this.updateModeButtons();
+            this.updateCancelButton();
+            this.updateDeleteButton();
+            this.redraw();
+        }
+
+        updateModeButtons() {
+            document.getElementById('btnIdle').classList.toggle('active', this.mode === Mode.IDLE);
+            document.getElementById('btnAddLine').classList.toggle('active', this.mode === Mode.ADD_LINE);
+        }
+
+        updateFieldLabels() {
+            const suffix = this.unitMode === 'metric' ? ' (mm):' : ' (in):';
+            document.getElementById('labelTileWidth').textContent = 'Width' + suffix;
+            document.getElementById('labelTileHeight').textContent = 'Height' + suffix;
+            document.getElementById('labelGroutWidth').textContent = 'Grout Width' + suffix;
+            // Offset labels have full/short spans
+            const oxFull = document.querySelector('#labelOffsetX .label-full');
+            const oyFull = document.querySelector('#labelOffsetY .label-full');
+            if (oxFull) oxFull.textContent = 'Offset X' + suffix;
+            else document.getElementById('labelOffsetX').textContent = 'Offset X' + suffix;
+            if (oyFull) oyFull.textContent = 'Offset Y' + suffix;
+            else document.getElementById('labelOffsetY').textContent = 'Offset Y' + suffix;
+        }
+
+        updateTileInputFields() {
+            const isMetric = this.unitMode === 'metric';
+            const format = (inches) => isMetric ? (inches * CONFIG.MM_PER_INCH).toFixed(1) : inches.toFixed(3);
+            document.getElementById('tileWidth').value = format(this.tileWidthInches);
+            document.getElementById('tileHeight').value = format(this.tileHeightInches);
+            document.getElementById('groutWidth').value = format(this.groutWidthInches);
+            document.getElementById('offsetX').value = format(this.offsetXInches);
+            document.getElementById('offsetY').value = format(this.offsetYInches);
+        }
+
+        updateTileSettings() {
+            const getValue = (id) => parseUserInput(document.getElementById(id).value, this.unitMode);
+            const tileW = getValue('tileWidth'), tileH = getValue('tileHeight');
+            const groutW = getValue('groutWidth'), offX = getValue('offsetX'), offY = getValue('offsetY');
+            if (!isNaN(tileW) && tileW > 0) this.tileWidthInches = tileW;
+            if (!isNaN(tileH) && tileH > 0) this.tileHeightInches = tileH;
+            if (!isNaN(groutW) && groutW >= 0) this.groutWidthInches = groutW;
+            if (!isNaN(offX)) this.offsetXInches = offX;
+            if (!isNaN(offY)) this.offsetYInches = offY;
+            this.redraw();
+        }
+
+        updateBondOffset() {
+            const value = parseFloat(document.getElementById('bondOffset').value);
+            if (!isNaN(value) && value >= 0 && value <= 1) { this.bondOffset = value; this.redraw(); }
+        }
+
+        updateRotation() {
+            this.rotationDegrees = parseFloat(document.getElementById('rotation').value) || 0;
+            this.redraw();
+        }
+
+        changeUnits() {
+            this.unitMode = document.getElementById('unitMode').value;
+            this.updateFieldLabels();
+            this.updateTileInputFields();
+            this.redraw();
+        }
+
+        adjustOffset(axis, direction) {
+            const baseStep = 0.5;
+            const step = baseStep / this.zoom;
+            if (axis === 'x') this.offsetXInches += direction * step;
+            else this.offsetYInches += direction * step;
+            this.updateTileInputFields();
+            this.redraw();
+        }
+
+        recenterView() {
+            this.zoom = 1.0;
+            this.panX = 0;
+            this.panY = 0;
+            this.redraw();
+        }
+
+        clearAll() {
+            this.vertices = [];
+            this.lines = [];
+            this.clearSelection();
+            this.firstVertex = null;
+            this.mousePos = null;
+            this.detectedSurfaces = [];
+            this.selectedSurfaces = [];
+            this.hoverSurface = null;
+            this.updateSurfaceList();
+            this.updateFinalizeButtons();
+            this.updateCancelButton();
+            this.updateDeleteButton();
+            this.redraw();
+        }
+
+        // --------------------------------------------------------
+        // KEYBOARD PAN (WASD)
+        // --------------------------------------------------------
+        
+        startPanLoop() {
+            if (this.panAnimFrame) return;
+            const loop = () => {
+                let dx = 0, dy = 0;
+                if (this.keysHeld.has('w') || this.keysHeld.has('W')) dy += CONFIG.PAN_SPEED;
+                if (this.keysHeld.has('s') || this.keysHeld.has('S')) dy -= CONFIG.PAN_SPEED;
+                if (this.keysHeld.has('a') || this.keysHeld.has('A')) dx += CONFIG.PAN_SPEED;
+                if (this.keysHeld.has('d') || this.keysHeld.has('D')) dx -= CONFIG.PAN_SPEED;
+                if (dx !== 0 || dy !== 0) {
+                    this.panX += dx;
+                    this.panY += dy;
+                    this.redraw();
+                    this.panAnimFrame = requestAnimationFrame(loop);
+                } else {
+                    this.panAnimFrame = null;
+                }
+            };
+            this.panAnimFrame = requestAnimationFrame(loop);
+        }
+        
+        stopPanLoop() {
+            if (this.panAnimFrame) {
+                cancelAnimationFrame(this.panAnimFrame);
+                this.panAnimFrame = null;
+            }
+        }
+
+        // --------------------------------------------------------
+        // EVENT HANDLERS
+        // --------------------------------------------------------
+
+        onKeyDown(e) {
+            const isInputFocused = document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT';
+            
+            if (!isInputFocused) {
+                if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) e.preventDefault();
+                
+                if (e.key === 'Escape') {
+                    this.cancelAction();
+                    return;
+                }
+                if (e.key === 'Delete') this.deleteSelected();
+                if (e.key === 'ArrowLeft') this.adjustOffset('x', -1);
+                if (e.key === 'ArrowRight') this.adjustOffset('x', 1);
+                if (e.key === 'ArrowUp') this.adjustOffset('y', -1);
+                if (e.key === 'ArrowDown') this.adjustOffset('y', 1);
+                if (e.key === ' ') this.recenterView();
+                
+                // WASD panning
+                if ('wasdWASD'.includes(e.key) && !e.repeat) {
+                    this.keysHeld.add(e.key);
+                    this.startPanLoop();
+                }
+            }
+            
+            if (e.key === 'Shift') {
+                this.shiftHeld = true;
+                document.getElementById('shiftIndicator').style.display = 'block';
+                this.redraw();
+            }
+        }
+
+        onKeyUp(e) {
+            if (e.key === 'Shift') {
+                this.shiftHeld = false;
+                document.getElementById('shiftIndicator').style.display = 'none';
+                this.redraw();
+            }
+            if ('wasdWASD'.includes(e.key)) {
+                this.keysHeld.delete(e.key);
+                if (![...'wasdWASD'].some(k => this.keysHeld.has(k))) this.stopPanLoop();
+            }
+        }
+
+        onWheel(e) {
+            e.preventDefault();
+            const rect = this.canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left, mouseY = e.clientY - rect.top;
+            const worldBefore = this.screenToWorld(mouseX, mouseY);
+            const zoomFactor = e.deltaY > 0 ? (1 - CONFIG.ZOOM_FACTOR) : (1 + CONFIG.ZOOM_FACTOR);
+            this.zoom = Math.max(CONFIG.MIN_ZOOM, Math.min(CONFIG.MAX_ZOOM, this.zoom * zoomFactor));
+            this.panX = mouseX - worldBefore.x * this.zoom;
+            this.panY = mouseY - worldBefore.y * this.zoom;
+            this.redraw();
+        }
+
+        // --------------------------------------------------------
+        // TOUCH EVENTS
+        // --------------------------------------------------------
+        
+        onTouchStart(e) {
+            e.preventDefault();
+            const rect = this.canvas.getBoundingClientRect();
+            const newTouches = e.changedTouches;
+            
+            for (let i = 0; i < newTouches.length; i++) {
+                const t = newTouches[i];
+                this.touches[t.identifier] = { x: t.clientX - rect.left, y: t.clientY - rect.top };
+            }
+            
+            const touchCount = Object.keys(this.touches).length;
+            
+            if (touchCount === 2) {
+                const pts = Object.values(this.touches);
+                this.lastTouchDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+                this.lastTouchCenter = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+                this.isTouchPanning = true;
+                this.isDragging = false;
+                this.touchDragged = false;
+                this.hideLoupe();
+            } else if (touchCount === 1) {
+                const t = newTouches[0];
+                this.activeTouchId = t.identifier;
+                this.touchStartPos = { x: t.clientX, y: t.clientY };
+                this.touchDragged = false;
+                
+                // For IDLE/FINALIZE modes, fire mouseDown immediately (enables drag)
+                if (this.mode !== Mode.ADD_LINE) {
+                    const fakeEvent = { clientX: t.clientX, clientY: t.clientY, preventDefault: () => {} };
+                    this.onMouseDown(fakeEvent);
+                }
+                
+                // Update mouse position for preview line in ADD_LINE
+                if (this.mode === Mode.ADD_LINE) {
+                    const pos = this.screenToWorld(t.clientX - rect.left, t.clientY - rect.top);
+                    this.mousePos = pos;
+                    this.redraw();
+                }
+                
+                if (this.isMobile) {
+                    this.showLoupe(t.clientX - rect.left, t.clientY - rect.top);
+                }
+            }
+        }
+        
+        onTouchMove(e) {
+            e.preventDefault();
+            const rect = this.canvas.getBoundingClientRect();
+            
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                if (this.touches[t.identifier]) {
+                    this.touches[t.identifier] = { x: t.clientX - rect.left, y: t.clientY - rect.top };
+                }
+            }
+            
+            const touchCount = Object.keys(this.touches).length;
+            
+            if (touchCount === 2 && this.isTouchPanning) {
+                const pts = Object.values(this.touches);
+                const newDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+                const newCenter = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+                
+                if (this.lastTouchDist !== null && this.lastTouchCenter !== null) {
+                    const scale = newDist / this.lastTouchDist;
+                    const worldBefore = this.screenToWorld(newCenter.x, newCenter.y);
+                    this.zoom = Math.max(CONFIG.MIN_ZOOM, Math.min(CONFIG.MAX_ZOOM, this.zoom * scale));
+                    this.panX = newCenter.x - worldBefore.x * this.zoom;
+                    this.panY = newCenter.y - worldBefore.y * this.zoom;
+                    const dx = newCenter.x - this.lastTouchCenter.x;
+                    const dy = newCenter.y - this.lastTouchCenter.y;
+                    this.panX += dx;
+                    this.panY += dy;
+                    this.redraw();
+                }
+                
+                this.lastTouchDist = newDist;
+                this.lastTouchCenter = newCenter;
+            } else if (touchCount === 1 && !this.isTouchPanning) {
+                const t = e.changedTouches[0];
+                
+                // Track if finger has moved significantly (to distinguish tap from drag)
+                if (this.touchStartPos) {
+                    const dx = t.clientX - this.touchStartPos.x;
+                    const dy = t.clientY - this.touchStartPos.y;
+                    if (Math.hypot(dx, dy) > 10) this.touchDragged = true;
+                }
+                
+                const fakeEvent = { clientX: t.clientX, clientY: t.clientY };
+                this.onMouseMove(fakeEvent);
+                if (this.isMobile) {
+                    this.showLoupe(t.clientX - rect.left, t.clientY - rect.top);
+                }
+            }
+        }
+        
+        onTouchEnd(e) {
+            e.preventDefault();
+            const endedTouches = e.changedTouches;
+            
+            for (let i = 0; i < endedTouches.length; i++) {
+                delete this.touches[endedTouches[i].identifier];
+            }
+            
+            const touchCount = Object.keys(this.touches).length;
+            
+            if (touchCount < 2) {
+                this.isTouchPanning = false;
+                this.lastTouchDist = null;
+                this.lastTouchCenter = null;
+            }
+            
+            if (touchCount === 0 && endedTouches.length > 0) {
+                const t = endedTouches[0];
+                
+                // For ADD_LINE mode, fire the click on touchEnd (tap completed)
+                if (this.mode === Mode.ADD_LINE && !this.touchDragged) {
+                    const fakeEvent = { clientX: t.clientX, clientY: t.clientY, preventDefault: () => {} };
+                    this.onMouseDown(fakeEvent);  // This triggers handleAddLineClick
+                }
+                
+                // For other modes, fire mouseUp
+                if (this.mode !== Mode.ADD_LINE) {
+                    const fakeEvent = { clientX: t.clientX, clientY: t.clientY };
+                    this.onMouseUp(fakeEvent);
+                }
+                
+                this.activeTouchId = null;
+                this.touchStartPos = null;
+                this.touchDragged = false;
+                this.hideLoupe();
+            }
+        }
+
+        // --------------------------------------------------------
+        // TOUCH LOUPE
+        // --------------------------------------------------------
+        
+        showLoupe(screenX, screenY) {
+            const loupeSize = 100;
+            const loupeRadius = loupeSize / 2;
+            const offsetAbove = 90;
+            const magnification = 2.5;
+            
+            // Position loupe above the finger
+            let loupeX = screenX - loupeRadius;
+            let loupeY = screenY - loupeRadius - offsetAbove;
+            
+            // Keep within canvas bounds
+            const cw = this.canvas.width, ch = this.canvas.height;
+            if (loupeX < 4) loupeX = 4;
+            if (loupeX + loupeSize > cw - 4) loupeX = cw - loupeSize - 4;
+            if (loupeY < 4) loupeY = screenY + loupeRadius + 20;  // flip below finger
+            
+            this.loupeEl.style.left = loupeX + 'px';
+            this.loupeEl.style.top = loupeY + 'px';
+            this.loupeEl.style.display = 'block';
+            this.loupeVisible = true;
+            
+            // Render magnified view
+            const loupeCtx = this.loupeCtx;
+            const res = 200;
+            loupeCtx.clearRect(0, 0, res, res);
+            loupeCtx.save();
+            loupeCtx.beginPath();
+            loupeCtx.arc(res/2, res/2, res/2, 0, Math.PI * 2);
+            loupeCtx.clip();
+            
+            // Background fill (in case source is at edge)
+            loupeCtx.fillStyle = '#E5E9F0';
+            loupeCtx.fillRect(0, 0, res, res);
+            
+            const srcSize = res / magnification;
+            loupeCtx.drawImage(this.canvas, screenX - srcSize/2, screenY - srcSize/2, srcSize, srcSize, 0, 0, res, res);
+            loupeCtx.restore();
+            
+            // Draw crosshair
+            loupeCtx.strokeStyle = 'rgba(94, 129, 172, 0.6)';
+            loupeCtx.lineWidth = 1;
+            loupeCtx.beginPath();
+            loupeCtx.moveTo(res/2 - 10, res/2); loupeCtx.lineTo(res/2 + 10, res/2);
+            loupeCtx.moveTo(res/2, res/2 - 10); loupeCtx.lineTo(res/2, res/2 + 10);
+            loupeCtx.stroke();
+        }
+        
+        hideLoupe() {
+            if (this.loupeVisible) {
+                this.loupeEl.style.display = 'none';
+                this.loupeVisible = false;
+            }
+        }
+
+        // --------------------------------------------------------
+        // MOUSE EVENTS
+        // --------------------------------------------------------
+
+        onMouseDown(e) {
+            const pos = this.getMousePos(e);
+            
+            if (this.mode === Mode.ADD_LINE) {
+                this.handleAddLineClick(pos);
+                return;
+            }
+            
+            if (this.mode === Mode.FINALIZE) {
+                const surfaceIdx = this.findSurfaceAt(pos);
+                if (surfaceIdx !== null) this.toggleSurfaceSelection(surfaceIdx);
+                return;
+            }
+            
+            // IDLE mode
+            const vIdx = this.findVertexAt(pos);
+            if (vIdx !== null) {
+                this.selectedVertex = vIdx;
+                this.selectedLine = null;
+                this.selectedVertices = [];
+                this.storeOriginalPositions();
+                this.isDragging = true;
+                this.dragStart = pos;
+                this.updateCancelButton();
+                this.updateDeleteButton();
+                this.redraw();
+                return;
+            }
+            
+            const lIdx = this.findLineAt(pos);
+            if (lIdx !== null) {
+                this.selectedLine = lIdx;
+                this.selectedVertex = null;
+                this.selectedVertices = [];
+                this.storeOriginalPositions();
+                this.isDragging = true;
+                this.dragStart = pos;
+                this.updateCancelButton();
+                this.updateDeleteButton();
+                this.redraw();
+                return;
+            }
+            
+            this.clearSelection();
+            this.isRectSelecting = true;
+            this.rectStart = pos;
+            this.rectEnd = pos;
+            this.updateCancelButton();
+            this.updateDeleteButton();
+            this.redraw();
+        }
+
+        onMouseMove(e) {
+            const pos = this.getMousePos(e);
+            this.mousePos = pos;
+            
+            if (this.mode === Mode.FINALIZE) {
+                const foundSurface = this.findSurfaceAt(pos);
+                if (foundSurface !== this.hoverSurface) { this.hoverSurface = foundSurface; this.redraw(); }
+                return;
+            }
+            
+            // Hover detection
+            if (this.mode === Mode.ADD_LINE || (this.mode === Mode.IDLE && this.isDragging && this.selectedVertex !== null)) {
+                const threshold = this.getVertexMergeDist() / this.zoom;
+                let foundHoverVertex = null, foundHoverLine = null;
+                
+                for (let i = 0; i < this.vertices.length; i++) {
+                    if (this.mode === Mode.ADD_LINE && i === this.firstVertex) continue;
+                    if (this.mode === Mode.IDLE && i === this.selectedVertex) continue;
+                    if (distance(pos, this.vertices[i]) <= threshold) { foundHoverVertex = i; break; }
+                }
+                
+                if (foundHoverVertex === null && this.mode === Mode.ADD_LINE) {
+                    foundHoverLine = this.findLineContainingPoint(pos, []);
+                }
+                
+                if (foundHoverVertex !== this.hoverVertex || foundHoverLine !== this.hoverLine) {
+                    this.hoverVertex = foundHoverVertex;
+                    this.hoverLine = foundHoverLine;
+                    this.redraw();
+                }
+            } else {
+                if (this.hoverVertex !== null || this.hoverLine !== null) {
+                    this.hoverVertex = null;
+                    this.hoverLine = null;
+                    this.redraw();
+                }
+            }
+            
+            if (this.isRectSelecting) { this.rectEnd = pos; this.redraw(); return; }
+            
+            if (!this.isDragging) {
+                if ((this.mode === Mode.ADD_LINE && this.firstVertex !== null) || this.distanceToolEnabled) this.redraw();
+                return;
+            }
+            
+            const dx = pos.x - this.dragStart.x, dy = pos.y - this.dragStart.y;
+            
+            if (this.selectedVertex !== null) {
+                this.vertices[this.selectedVertex].x += dx;
+                this.vertices[this.selectedVertex].y += dy;
+            } else if (this.selectedLine !== null) {
+                const [v1, v2] = this.lines[this.selectedLine];
+                this.vertices[v1].x += dx; this.vertices[v1].y += dy;
+                this.vertices[v2].x += dx; this.vertices[v2].y += dy;
+            } else if (this.selectedVertices.length > 0) {
+                this.selectedVertices.forEach(vIdx => { this.vertices[vIdx].x += dx; this.vertices[vIdx].y += dy; });
+            }
+            
+            this.dragStart = pos;
+            this.redraw();
+        }
+
+        onMouseUp(e) {
+            if (this.isRectSelecting) {
+                const minX = Math.min(this.rectStart.x, this.rectEnd.x), maxX = Math.max(this.rectStart.x, this.rectEnd.x);
+                const minY = Math.min(this.rectStart.y, this.rectEnd.y), maxY = Math.max(this.rectStart.y, this.rectEnd.y);
+                
+                this.selectedVertices = [];
+                this.vertices.forEach((v, idx) => {
+                    if (v.x >= minX && v.x <= maxX && v.y >= minY && v.y <= maxY) this.selectedVertices.push(idx);
+                });
+                
+                if (this.selectedVertices.length > 0) {
+                    this.storeOriginalPositions();
+                    this.isDragging = true;
+                    this.dragStart = this.getMousePos(e);
+                }
+                
+                this.isRectSelecting = false;
+                this.rectStart = null;
+                this.rectEnd = null;
+                this.updateCancelButton();
+                this.updateDeleteButton();
+                this.redraw();
+                return;
+            }
+            
+            if (this.isDragging && this.selectedVertex !== null) {
+                const angleThreshold = this.getAngleSnapThreshold();
+                if (angleThreshold > 0 && !this.shiftHeld) {
+                    const connectedLines = this.lines.filter(([v1, v2]) => v1 === this.selectedVertex || v2 === this.selectedVertex);
+                    for (const [a, b] of connectedLines) {
+                        const fixedIdx = a === this.selectedVertex ? b : a;
+                        if (lineAngleCloseToAxis(this.vertices[fixedIdx], this.vertices[this.selectedVertex], angleThreshold)) {
+                            this.vertices[this.selectedVertex] = snapToAxis(this.vertices[fixedIdx], this.vertices[this.selectedVertex], angleThreshold);
+                        }
+                    }
+                }
+                
+                const mergeIdx = this.findVertexToMerge(this.selectedVertex);
+                if (mergeIdx !== null && mergeIdx !== this.selectedVertex) {
+                    this.mergeVertices(this.selectedVertex, mergeIdx);
+                }
+            }
+            
+            this.isDragging = false;
+            this.redraw();
+        }
+
+        async handleAddLineClick(pos) {
+            let vIdx = this.findVertexAt(pos);
+            let createdNewVertex = false;
+            
+            if (vIdx === null) {
+                const lineAtClick = this.findLineContainingPoint(pos, []);
+                if (lineAtClick !== null) { vIdx = this.splitLineAt(lineAtClick, pos); createdNewVertex = true; }
+                else { vIdx = this.vertices.length; this.vertices.push({ x: pos.x, y: pos.y }); createdNewVertex = true; }
+            }
+            
+            if (this.firstVertex === null) {
+                this.firstVertex = vIdx;
+                this.firstVertexWasNew = createdNewVertex;
+                this.updateCancelButton();
+                this.redraw();
+            } else {
+                if (vIdx !== this.firstVertex) {
+                    const angleThreshold = this.getAngleSnapThreshold();
+                    if (angleThreshold > 0 && !this.shiftHeld) {
+                        const p1 = this.vertices[this.firstVertex], p2 = this.vertices[vIdx];
+                        if (lineAngleCloseToAxis(p1, p2, angleThreshold)) {
+                            this.vertices[vIdx] = snapToAxis(p1, p2, angleThreshold);
+                        }
+                    }
+                    
+                    const p1 = this.vertices[this.firstVertex];
+                    const p2 = this.vertices[vIdx];
+                    const currentLenPx = distance(p1, p2);
+                    const currentLenIn = currentLenPx / CONFIG.PIXELS_PER_INCH;
+                    
+                    this.isAwaitingLengthPrompt = true;
+                    this.pendingLineEndVertex = vIdx;
+                    
+                    const newLenStr = await customPrompt(
+                        `Current length: ${formatMeasurement(currentLenIn, this.unitMode)}\nEnter new length (accepts decimal or fractions):`,
+                        currentLenIn.toFixed(2)
+                    );
+                    
+                    this.isAwaitingLengthPrompt = false;
+                    this.pendingLineEndVertex = null;
+                    
+                    // If cancelled (null), abort the line entirely
+                    if (newLenStr === null) {
+                        // Remove the end vertex if it was newly created and unconnected
+                        if (vIdx < this.vertices.length) {
+                            const hasConnections = this.lines.some(([a, b]) => a === vIdx || b === vIdx);
+                            if (!hasConnections) {
+                                this.vertices.splice(vIdx, 1);
+                                this.remapIndicesAfterDelete(vIdx);
+                                // Adjust firstVertex index if needed
+                                if (this.firstVertex > vIdx) this.firstVertex--;
+                            }
+                        }
+                        // Remove the start vertex if it was newly created and unconnected
+                        if (this.firstVertexWasNew && this.firstVertex !== null && this.firstVertex < this.vertices.length) {
+                            const startIdx = this.firstVertex;
+                            const hasConnections = this.lines.some(([a, b]) => a === startIdx || b === startIdx);
+                            if (!hasConnections) {
+                                this.vertices.splice(startIdx, 1);
+                                this.remapIndicesAfterDelete(startIdx);
+                            }
+                        }
+                        this.firstVertex = null;
+                        this.firstVertexWasNew = false;
+                        this.mousePos = null;
+                        this.hoverVertex = null;
+                        this.hoverLine = null;
+                        this.updateCancelButton();
+                        this.redraw();
+                        return;
+                    }
+                    
+                    if (newLenStr !== '') {
+                        const newLenIn = parseUserInput(newLenStr, this.unitMode);
+                        if (!isNaN(newLenIn) && newLenIn > 0) {
+                            this.vertices[vIdx] = adjustLineLength(p1, this.vertices[vIdx], newLenIn * CONFIG.PIXELS_PER_INCH);
+                        }
+                    }
+                    
+                    const newSegments = this.processNewLineIntersections(this.firstVertex, vIdx);
+                    for (const [v1, v2] of newSegments) this.lines.push([v1, v2]);
+                    this.removeDuplicateLines();
+                }
+                
+                this.firstVertex = null;
+                this.hoverVertex = null;
+                this.mousePos = null;
+                this.updateCancelButton();
+                this.redraw();
+            }
+        }
+
+        deleteSelected() {
+            if (this.selectedVertex !== null) {
+                this.deleteVertex(this.selectedVertex);
+                this.selectedVertex = null;
+            } else if (this.selectedLine !== null) {
+                const [v1, v2] = this.lines[this.selectedLine];
+                this.lines.splice(this.selectedLine, 1);
+                this.selectedLine = null;
+                const usage1 = this.lines.filter(([a, b]) => a === v1 || b === v1).length;
+                const usage2 = this.lines.filter(([a, b]) => a === v2 || b === v2).length;
+                const toDelete = [];
+                if (usage1 === 0) toDelete.push(v1);
+                if (usage2 === 0) toDelete.push(v2);
+                toDelete.sort((a, b) => b - a);
+                toDelete.forEach(vIdx => { this.vertices.splice(vIdx, 1); this.remapIndicesAfterDelete(vIdx); });
+            } else if (this.selectedVertices.length > 0) {
+                [...this.selectedVertices].sort((a, b) => b - a).forEach(vIdx => this.deleteVertex(vIdx));
+                this.selectedVertices = [];
+            }
+            this.originalPositions = null;
+            this.updateCancelButton();
+            this.updateDeleteButton();
+            this.redraw();
+        }
+
+        // --------------------------------------------------------
+        // DISTANCE TOOL
+        // --------------------------------------------------------
+
+        findNearestLineInDirection(pos, direction) {
+            if (this.lines.length === 0) return null;
+            let minDist = Infinity, nearestIntersection = null;
+            const rayLength = 100000;
+            const rays = direction === 'x'
+                ? [{ x: pos.x + rayLength, y: pos.y }, { x: pos.x - rayLength, y: pos.y }]
+                : [{ x: pos.x, y: pos.y + rayLength }, { x: pos.x, y: pos.y - rayLength }];
+            
+            this.lines.forEach(([v1, v2]) => {
+                rays.forEach(rayEnd => {
+                    const intersection = lineSegmentIntersection(pos, rayEnd, this.vertices[v1], this.vertices[v2]);
+                    if (intersection) {
+                        const dist = direction === 'x' ? Math.abs(intersection.x - pos.x) : Math.abs(intersection.y - pos.y);
+                        if (dist < minDist && dist > 0.1) { minDist = dist; nearestIntersection = intersection; }
+                    }
+                });
+            });
+            return nearestIntersection ? { point: nearestIntersection, distance: minDist } : null;
+        }
+
+        // --------------------------------------------------------
+        // DRAWING
+        // --------------------------------------------------------
+
+        redraw() {
+            const ctx = this.ctx;
+            ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            ctx.save();
+            ctx.translate(this.panX, this.panY);
+            ctx.scale(this.zoom, this.zoom);
+            this.drawGrid();
+            this.drawSurfaces();
+            this.drawLines();
+            this.drawPreviewLines();
+            this.drawDistanceTool();
+            this.drawVertices();
+            ctx.restore();
+            
+            if (this.isRectSelecting && this.rectStart && this.rectEnd) {
+                const start = this.worldToScreen(this.rectStart), end = this.worldToScreen(this.rectEnd);
+                ctx.strokeStyle = CONFIG.COLORS.RECT_SELECT;
+                ctx.lineWidth = 1;
+                ctx.setLineDash([5, 5]);
+                ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
+                ctx.setLineDash([]);
+            }
+            
+            // Draw watermark on canvas (screen space)
+            this.drawWatermark();
+        }
+        
+        drawWatermark() {
+            const ctx = this.ctx;
+            const w = this.canvas.width;
+            const h = this.canvas.height;
+            ctx.save();
+            ctx.globalAlpha = 0.22;
+            ctx.fillStyle = '#4C566A';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'bottom';
+            ctx.font = '500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+            ctx.fillText('Tile Planner V1.0', w - 14, h - 22);
+            ctx.font = '500 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+            ctx.fillText('Jason Cousineau Solutions Inc.', w - 14, h - 8);
+            ctx.restore();
+        }
+
+        drawSurfaces() {
+            if (this.currentTab !== 'finalize') return;
+            if (this.detectedSurfaces.length === 0) return;
+            const ctx = this.ctx;
+            
+            for (let i = 0; i < this.detectedSurfaces.length; i++) {
+                const surface = this.detectedSurfaces[i];
+                const outerBoundary = this.getSurfaceOuterBoundary(surface);
+                if (outerBoundary.length < 3) continue;
+                
+                const isSelected = this.selectedSurfaces.includes(i);
+                const isHovered = this.hoverSurface === i && !isSelected;
+                let fillColor;
+                if (isHovered) fillColor = CONFIG.COLORS.SURFACE_HOVER;
+                else fillColor = CONFIG.COLORS.SURFACE_FILLS[i % CONFIG.COLORS.SURFACE_FILLS.length];
+                
+                ctx.fillStyle = fillColor;
+                ctx.beginPath();
+                const firstPt = this.vertices[outerBoundary[0]];
+                ctx.moveTo(firstPt.x, firstPt.y);
+                for (let j = 1; j < outerBoundary.length; j++) { const pt = this.vertices[outerBoundary[j]]; ctx.lineTo(pt.x, pt.y); }
+                ctx.closePath();
+                
+                if (surface.holes) {
+                    for (const hole of surface.holes) {
+                        const hf = this.vertices[hole[0]];
+                        ctx.moveTo(hf.x, hf.y);
+                        for (let j = hole.length - 1; j >= 0; j--) { const pt = this.vertices[hole[j]]; ctx.lineTo(pt.x, pt.y); }
+                        ctx.closePath();
+                    }
+                }
+                ctx.fill('evenodd');
+                if (isSelected) this.drawDotPatternInSurface(surface);
+            }
+            
+            if (this.showCutMeasurements && this.selectedSurfaces.length > 0) {
+                for (const surfaceIdx of this.selectedSurfaces) this.drawPartialTileMeasurements(this.detectedSurfaces[surfaceIdx]);
+            }
+        }
+
+        drawDotPatternInSurface(surface) {
+            const ctx = this.ctx;
+            const outerBoundary = this.getSurfaceOuterBoundary(surface);
+            const polygon = outerBoundary.map(i => this.vertices[i]);
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const pt of polygon) { minX = Math.min(minX, pt.x); minY = Math.min(minY, pt.y); maxX = Math.max(maxX, pt.x); maxY = Math.max(maxY, pt.y); }
+            const spacing = 15 / this.zoom, dotRadius = 2 / this.zoom;
+            ctx.fillStyle = 'rgba(0, 100, 200, 0.5)';
+            for (let x = minX + spacing/2; x < maxX; x += spacing) {
+                for (let y = minY + spacing/2; y < maxY; y += spacing) {
+                    if (this.pointInSurface({x, y}, surface)) { ctx.beginPath(); ctx.arc(x, y, dotRadius, 0, Math.PI * 2); ctx.fill(); }
+                }
+            }
+        }
+
+        drawPartialTileMeasurements(surface) {
+            const ctx = this.ctx;
+            const outerBoundary = this.getSurfaceOuterBoundary(surface);
+            const polygon = outerBoundary.map(i => this.vertices[i]);
+            const tileW = this.tileWidthInches * CONFIG.PIXELS_PER_INCH, tileH = this.tileHeightInches * CONFIG.PIXELS_PER_INCH;
+            const groutW = this.groutWidthInches * CONFIG.PIXELS_PER_INCH;
+            const offsetX = this.offsetXInches * CONFIG.PIXELS_PER_INCH, offsetY = this.offsetYInches * CONFIG.PIXELS_PER_INCH;
+            const rotationRad = (this.rotationDegrees * Math.PI) / 180;
+            const effectiveTileW = tileW + groutW, effectiveTileH = tileH + groutW;
+            if (effectiveTileW <= 1 || effectiveTileH <= 1) return;
+            
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const pt of polygon) { minX = Math.min(minX, pt.x); minY = Math.min(minY, pt.y); maxX = Math.max(maxX, pt.x); maxY = Math.max(maxY, pt.y); }
+            
+            const cosR = Math.cos(-rotationRad), sinR = Math.sin(-rotationRad);
+            const worldCorners = [
+                { x: minX - offsetX, y: minY - offsetY }, { x: maxX - offsetX, y: minY - offsetY },
+                { x: minX - offsetX, y: maxY - offsetY }, { x: maxX - offsetX, y: maxY - offsetY }
+            ];
+            const gridCorners = worldCorners.map(c => ({ x: c.x * cosR - c.y * sinR, y: c.x * sinR + c.y * cosR }));
+            let gMinX = Infinity, gMinY = Infinity, gMaxX = -Infinity, gMaxY = -Infinity;
+            for (const c of gridCorners) { gMinX = Math.min(gMinX, c.x); gMinY = Math.min(gMinY, c.y); gMaxX = Math.max(gMaxX, c.x); gMaxY = Math.max(gMaxY, c.y); }
+            const padding = Math.max(effectiveTileW, effectiveTileH) * 2;
+            gMinX -= padding; gMinY -= padding; gMaxX += padding; gMaxY += padding;
+            
+            const partialTiles = [];
+            const startCol = Math.floor(gMinX / effectiveTileW) - 1, endCol = Math.ceil(gMaxX / effectiveTileW) + 1;
+            const startRow = Math.floor(gMinY / effectiveTileH) - 1, endRow = Math.ceil(gMaxY / effectiveTileH) + 1;
+            
+            for (let row = startRow; row <= endRow; row++) {
+                const rowOffset = (row % 2) * this.bondOffset * effectiveTileW;
+                for (let col = startCol; col <= endCol; col++) {
+                    let tileX = col * effectiveTileW + rowOffset, tileY = row * effectiveTileH;
+                    const tileCorners = [
+                        this.transformTilePoint(tileX, tileY, offsetX, offsetY, rotationRad),
+                        this.transformTilePoint(tileX + tileW, tileY, offsetX, offsetY, rotationRad),
+                        this.transformTilePoint(tileX + tileW, tileY + tileH, offsetX, offsetY, rotationRad),
+                        this.transformTilePoint(tileX, tileY + tileH, offsetX, offsetY, rotationRad)
+                    ];
+                    const tileInfo = this.analyzeTileIntersectionWithSurface(tileCorners, surface, tileW, tileH);
+                    if (tileInfo && tileInfo.isPartial) partialTiles.push(tileInfo);
+                }
+            }
+            this.drawPartialTileLabels(partialTiles, tileW, tileH);
+        }
+
+        transformTilePoint(x, y, offsetX, offsetY, rotationRad) {
+            const cosR = Math.cos(rotationRad), sinR = Math.sin(rotationRad);
+            return { x: x * cosR - y * sinR + offsetX, y: x * sinR + y * cosR + offsetY };
+        }
+
+        analyzeTileIntersectionWithSurface(tileCorners, surface, tileW, tileH) {
+            const outerBoundary = this.getSurfaceOuterBoundary(surface);
+            let cornersInside = 0;
+            for (const corner of tileCorners) if (this.pointInSurface(corner, surface)) cornersInside++;
+            if (cornersInside === 4) return null;
+            
+            if (cornersInside === 0) {
+                let hasIntersection = false;
+                const boundaries = [outerBoundary.map(i => this.vertices[i])];
+                if (surface.holes) for (const hole of surface.holes) boundaries.push(hole.map(i => this.vertices[i]));
+                
+                for (const polygon of boundaries) {
+                    for (let i = 0; i < polygon.length && !hasIntersection; i++) {
+                        for (let j = 0; j < 4; j++) {
+                            if (lineSegmentIntersection(polygon[i], polygon[(i+1) % polygon.length], tileCorners[j], tileCorners[(j+1) % 4])) {
+                                hasIntersection = true; break;
+                            }
+                        }
+                    }
+                    if (hasIntersection) break;
+                }
+                if (!hasIntersection) return null;
+            }
+            
+            return {
+                isPartial: true,
+                center: { x: (tileCorners[0].x + tileCorners[2].x) / 2, y: (tileCorners[0].y + tileCorners[2].y) / 2 },
+                corners: tileCorners,
+                cutEdges: this.findCutEdges(tileCorners, surface),
+                cornersInside
+            };
+        }
+
+        findCutEdges(tileCorners, surface) {
+            const cutEdges = [];
+            const outerBoundary = this.getSurfaceOuterBoundary(surface);
+            const boundaryPolygons = [outerBoundary.map(i => this.vertices[i])];
+            if (surface.holes) for (const hole of surface.holes) boundaryPolygons.push(hole.map(i => this.vertices[i]));
+            
+            for (let i = 0; i < 4; i++) {
+                const edgeStart = tileCorners[i], edgeEnd = tileCorners[(i + 1) % 4];
+                const intersections = [{ point: edgeStart, t: 0, inside: this.pointInSurface(edgeStart, surface) }];
+                
+                for (const polygon of boundaryPolygons) {
+                    for (let j = 0; j < polygon.length; j++) {
+                        const intersection = lineSegmentIntersection(edgeStart, edgeEnd, polygon[j], polygon[(j+1) % polygon.length]);
+                        if (intersection) {
+                            const t = distance(edgeStart, intersection) / distance(edgeStart, edgeEnd);
+                            if (t > 0.001 && t < 0.999) intersections.push({ point: intersection, t, inside: null });
+                        }
+                    }
+                }
+                
+                intersections.push({ point: edgeEnd, t: 1, inside: this.pointInSurface(edgeEnd, surface) });
+                intersections.sort((a, b) => a.t - b.t);
+                
+                for (let j = 0; j < intersections.length; j++) {
+                    if (intersections[j].inside === null) intersections[j].inside = !intersections[j - 1].inside;
+                }
+                
+                for (let j = 0; j < intersections.length - 1; j++) {
+                    const mid = { x: (intersections[j].point.x + intersections[j+1].point.x) / 2, y: (intersections[j].point.y + intersections[j+1].point.y) / 2 };
+                    if (this.pointInSurface(mid, surface)) {
+                        cutEdges.push({ start: intersections[j].point, end: intersections[j+1].point, length: distance(intersections[j].point, intersections[j+1].point), tileEdgeIndex: i });
+                    }
+                }
+            }
+            return cutEdges;
+        }
+
+        drawPartialTileLabels(partialTiles, tileW, tileH) {
+            const ctx = this.ctx;
+            const drawnLabels = [];
+            const fullWidthIn = tileW / CONFIG.PIXELS_PER_INCH, fullHeightIn = tileH / CONFIG.PIXELS_PER_INCH;
+            const tolerance = 0.1;
+            
+            for (const tile of partialTiles) {
+                if (!tile.cutEdges || tile.cutEdges.length === 0) continue;
+                for (const edge of tile.cutEdges) {
+                    const edgeLenIn = edge.length / CONFIG.PIXELS_PER_INCH;
+                    if (Math.abs(edgeLenIn - fullWidthIn) < tolerance || Math.abs(edgeLenIn - fullHeightIn) < tolerance) continue;
+                    const midpoint = { x: (edge.start.x + edge.end.x) / 2, y: (edge.start.y + edge.end.y) / 2 };
+                    if (drawnLabels.some(pos => distance(midpoint, pos) < 25 / this.zoom)) continue;
+                    
+                    const label = formatMeasurement(edgeLenIn, this.unitMode);
+                    const angle = Math.atan2(edge.end.y - edge.start.y, edge.end.x - edge.start.x);
+                    
+                    ctx.save();
+                    ctx.translate(midpoint.x, midpoint.y);
+                    ctx.scale(1 / this.zoom, 1 / this.zoom);
+                    let displayAngle = angle;
+                    if (displayAngle > Math.PI / 2) displayAngle -= Math.PI;
+                    if (displayAngle < -Math.PI / 2) displayAngle += Math.PI;
+                    ctx.rotate(displayAngle);
+                    ctx.font = 'bold 10px sans-serif';
+                    const metrics = ctx.measureText(label);
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                    ctx.fillRect(-metrics.width/2 - 2, -9, metrics.width + 4, 15);
+                    ctx.fillStyle = '#c00';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(label, 0, 0);
+                    ctx.restore();
+                    drawnLabels.push(midpoint);
+                }
+            }
+        }
+
+        drawLabel(text, worldX, worldY, color, offsetX = 5, offsetY = -5) {
+            const ctx = this.ctx;
+            ctx.save();
+            ctx.translate(worldX, worldY);
+            ctx.scale(1 / this.zoom, 1 / this.zoom);
+            ctx.fillStyle = color;
+            ctx.font = '12px sans-serif';
+            ctx.fillText(text, offsetX, offsetY);
+            ctx.restore();
+        }
+
+        drawGrid() {
+            const ctx = this.ctx;
+            const tileW = this.tileWidthInches * CONFIG.PIXELS_PER_INCH, tileH = this.tileHeightInches * CONFIG.PIXELS_PER_INCH;
+            const groutW = this.groutWidthInches * CONFIG.PIXELS_PER_INCH;
+            const bond = this.bondOffset;
+            const offsetX = this.offsetXInches * CONFIG.PIXELS_PER_INCH, offsetY = this.offsetYInches * CONFIG.PIXELS_PER_INCH;
+            const rotationRad = (this.rotationDegrees * Math.PI) / 180;
+            const effectiveTileW = tileW + groutW, effectiveTileH = tileH + groutW;
+            if (effectiveTileW <= 1 || effectiveTileH <= 1) return;
+            
+            const isTileMode = this.currentTab === 'tileLayout';
+            const isSurfaceMode = this.currentTab === 'surfaceDesign';
+            let tileOpacity = isTileMode ? 1.0 : (isSurfaceMode ? 0.3 : 0.5);
+            let strokeWidth = isTileMode ? 1.5 : 1;
+            
+            const bounds = this.getVisibleWorldBounds();
+            const padding = Math.max(effectiveTileW, effectiveTileH) * 2;
+            const rotationPadding = Math.max(bounds.width, bounds.height) * Math.abs(Math.sin(rotationRad));
+            const totalPadding = padding + rotationPadding;
+            
+            ctx.save();
+            ctx.globalAlpha = tileOpacity;
+            ctx.translate(offsetX, offsetY);
+            ctx.rotate(rotationRad);
+            
+            const cosR = Math.cos(-rotationRad), sinR = Math.sin(-rotationRad);
+            const drawMinX = bounds.minX - totalPadding - offsetX, drawMaxX = bounds.maxX + totalPadding - offsetX;
+            const drawMinY = bounds.minY - totalPadding - offsetY, drawMaxY = bounds.maxY + totalPadding - offsetY;
+            const corners = [{ x: drawMinX, y: drawMinY }, { x: drawMaxX, y: drawMinY }, { x: drawMinX, y: drawMaxY }, { x: drawMaxX, y: drawMaxY }];
+            const tc = corners.map(c => ({ x: c.x * cosR - c.y * sinR, y: c.x * sinR + c.y * cosR }));
+            const unrotatedMinX = Math.min(...tc.map(c => c.x)), unrotatedMaxX = Math.max(...tc.map(c => c.x));
+            const unrotatedMinY = Math.min(...tc.map(c => c.y)), unrotatedMaxY = Math.max(...tc.map(c => c.y));
+            
+            const startCol = Math.floor(unrotatedMinX / effectiveTileW) - 1, endCol = Math.ceil(unrotatedMaxX / effectiveTileW) + 1;
+            const startRow = Math.floor(unrotatedMinY / effectiveTileH) - 1, endRow = Math.ceil(unrotatedMaxY / effectiveTileH) + 1;
+            
+            for (let row = startRow; row <= endRow; row++) {
+                const rowOffset = (row % 2) * bond * effectiveTileW;
+                const y = row * effectiveTileH;
+                for (let col = startCol; col <= endCol; col++) {
+                    const x = col * effectiveTileW + rowOffset;
+                    ctx.fillStyle = CONFIG.COLORS.TILE_FILL;
+                    ctx.fillRect(x, y, tileW, tileH);
+                    ctx.strokeStyle = CONFIG.COLORS.TILE_STROKE;
+                    ctx.lineWidth = strokeWidth;
+                    ctx.strokeRect(x, y, tileW, tileH);
+                    if (groutW > 0) {
+                        ctx.fillStyle = CONFIG.COLORS.GROUT;
+                        ctx.fillRect(x + tileW, y, groutW, tileH + groutW);
+                        ctx.fillRect(x, y + tileH, tileW, groutW);
+                    }
+                }
+            }
+            ctx.restore();
+        }
+
+        drawLines() {
+            const ctx = this.ctx;
+            const isTileMode = this.currentTab === 'tileLayout';
+            const isSurfaceMode = this.currentTab === 'surfaceDesign';
+            const isFinalizeMode = this.currentTab === 'finalize';
+            const dimLines = isTileMode;
+            const baseLineWidth = isSurfaceMode ? 3 : 2;
+            
+            this.lines.forEach((line, idx) => {
+                const [v1, v2] = line;
+                if (this.isDragging && this.selectedVertex !== null && (v1 === this.selectedVertex || v2 === this.selectedVertex)) return;
+                const p1 = this.vertices[v1], p2 = this.vertices[v2];
+                const isSelected = idx === this.selectedLine;
+                const isHovered = idx === this.hoverLine;
+                
+                if (isHovered && !isFinalizeMode) {
+                    ctx.strokeStyle = CONFIG.COLORS.VERTEX_HOVER;
+                    ctx.lineWidth = 6 / this.zoom;
+                    ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+                }
+                
+                ctx.strokeStyle = isSelected ? CONFIG.COLORS.LINE_SELECTED : (dimLines ? CONFIG.COLORS.LINE_DIMMED : CONFIG.COLORS.LINE_DEFAULT);
+                ctx.lineWidth = (isSelected ? 3 : baseLineWidth) / this.zoom;
+                ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+                
+                if (!isFinalizeMode) {
+                    const midX = (p1.x + p2.x) / 2, midY = (p1.y + p2.y) / 2;
+                    this.drawLabel(formatMeasurement(distance(p1, p2) / CONFIG.PIXELS_PER_INCH, this.unitMode), midX, midY, dimLines ? CONFIG.COLORS.LABEL_DIMMED : CONFIG.COLORS.LABEL);
+                }
+            });
+            
+            if (this.hoverLine !== null && this.mousePos && this.currentTab === 'surfaceDesign') {
+                const [v1, v2] = this.lines[this.hoverLine];
+                const proj = projectPointOntoSegment(this.mousePos, this.vertices[v1], this.vertices[v2]);
+                if (proj) {
+                    ctx.fillStyle = CONFIG.COLORS.VERTEX_HOVER;
+                    ctx.beginPath(); ctx.arc(proj.point.x, proj.point.y, CONFIG.HANDLE_SIZE / this.zoom, 0, Math.PI * 2); ctx.fill();
+                }
+            }
+        }
+
+        drawPreviewLines() {
+            const ctx = this.ctx;
+            const angleThreshold = this.getAngleSnapThreshold();
+            
+            if (this.mode === Mode.ADD_LINE && this.firstVertex !== null && this.mousePos) {
+                const p1 = this.vertices[this.firstVertex];
+                let p2 = this.hoverVertex !== null ? this.vertices[this.hoverVertex] : this.mousePos;
+                const willSnap = angleThreshold > 0 && !this.shiftHeld && lineAngleCloseToAxis(p1, p2, angleThreshold);
+                
+                ctx.strokeStyle = willSnap ? CONFIG.COLORS.PREVIEW_SNAP : CONFIG.COLORS.PREVIEW_NO_SNAP;
+                ctx.lineWidth = 2 / this.zoom;
+                ctx.setLineDash(willSnap ? [10 / this.zoom, 5 / this.zoom] : [3 / this.zoom, 5 / this.zoom]);
+                ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+                ctx.setLineDash([]);
+                
+                const midX = (p1.x + p2.x) / 2, midY = (p1.y + p2.y) / 2;
+                this.drawLabel(formatMeasurement(distance(p1, p2) / CONFIG.PIXELS_PER_INCH, this.unitMode), midX, midY, 'blue');
+            }
+            
+            if (this.mode === Mode.IDLE && this.isDragging && this.selectedVertex !== null) {
+                const movingVertex = this.vertices[this.selectedVertex];
+                this.lines.forEach(([v1, v2]) => {
+                    if (v1 === this.selectedVertex || v2 === this.selectedVertex) {
+                        const otherVertex = this.vertices[v1 === this.selectedVertex ? v2 : v1];
+                        const willSnap = angleThreshold > 0 && !this.shiftHeld && lineAngleCloseToAxis(otherVertex, movingVertex, angleThreshold);
+                        ctx.strokeStyle = willSnap ? CONFIG.COLORS.PREVIEW_SNAP : CONFIG.COLORS.PREVIEW_NO_SNAP;
+                        ctx.lineWidth = 2 / this.zoom;
+                        ctx.setLineDash(willSnap ? [10 / this.zoom, 5 / this.zoom] : [3 / this.zoom, 5 / this.zoom]);
+                        ctx.beginPath(); ctx.moveTo(otherVertex.x, otherVertex.y); ctx.lineTo(movingVertex.x, movingVertex.y); ctx.stroke();
+                        ctx.setLineDash([]);
+                    }
+                });
+            }
+        }
+
+        drawDistanceTool() {
+            if (this.currentTab === 'finalize') return;
+            if (!this.distanceToolEnabled || !this.mousePos || this.lines.length === 0) return;
+            const ctx = this.ctx;
+            ctx.strokeStyle = CONFIG.COLORS.DISTANCE_TOOL;
+            ctx.lineWidth = 1 / this.zoom;
+            ctx.setLineDash([5 / this.zoom, 3 / this.zoom]);
+            
+            const xResult = this.findNearestLineInDirection(this.mousePos, 'x');
+            const yResult = this.findNearestLineInDirection(this.mousePos, 'y');
+            
+            if (xResult) {
+                ctx.beginPath(); ctx.moveTo(this.mousePos.x, this.mousePos.y); ctx.lineTo(xResult.point.x, this.mousePos.y); ctx.stroke();
+                this.drawLabel(`X: ${formatMeasurement(xResult.distance / CONFIG.PIXELS_PER_INCH, this.unitMode)}`, (this.mousePos.x + xResult.point.x) / 2, this.mousePos.y, CONFIG.COLORS.DISTANCE_TOOL);
+            }
+            if (yResult) {
+                ctx.beginPath(); ctx.moveTo(this.mousePos.x, this.mousePos.y); ctx.lineTo(this.mousePos.x, yResult.point.y); ctx.stroke();
+                this.drawLabel(`Y: ${formatMeasurement(yResult.distance / CONFIG.PIXELS_PER_INCH, this.unitMode)}`, this.mousePos.x, (this.mousePos.y + yResult.point.y) / 2, CONFIG.COLORS.DISTANCE_TOOL, 5, 0);
+            }
+            ctx.setLineDash([]);
+        }
+
+        drawVertices() {
+            const ctx = this.ctx;
+            const isTileMode = this.currentTab === 'tileLayout';
+            const isSurfaceMode = this.currentTab === 'surfaceDesign';
+            const isFinalizeMode = this.currentTab === 'finalize';
+            if (isTileMode) return;
+            const dimVertices = isFinalizeMode;
+            
+            this.vertices.forEach((v, idx) => {
+                let color = dimVertices ? CONFIG.COLORS.VERTEX_DIMMED : CONFIG.COLORS.VERTEX_DEFAULT;
+                if (idx === this.selectedVertex) color = CONFIG.COLORS.VERTEX_SELECTED;
+                else if (this.selectedVertices.includes(idx)) color = CONFIG.COLORS.VERTEX_MULTI_SELECTED;
+                else if (idx === this.hoverVertex) color = CONFIG.COLORS.VERTEX_HOVER;
+                
+                ctx.fillStyle = color;
+                const size = (isSurfaceMode ? CONFIG.HANDLE_SIZE : CONFIG.HANDLE_SIZE * 0.7) / this.zoom;
+                ctx.fillRect(v.x - size, v.y - size, size * 2, size * 2);
+            });
+            
+            if (this.mode === Mode.ADD_LINE && this.firstVertex !== null) {
+                const v = this.vertices[this.firstVertex];
+                ctx.strokeStyle = CONFIG.COLORS.VERTEX_SELECTED;
+                ctx.lineWidth = 2 / this.zoom;
+                ctx.beginPath(); ctx.arc(v.x, v.y, 10 / this.zoom, 0, Math.PI * 2); ctx.stroke();
+            }
+        }
+    }
+
+    const app = new TileApp();
+    </script>
+</body>
+</html>

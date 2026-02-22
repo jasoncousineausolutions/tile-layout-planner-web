@@ -44,6 +44,7 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             display: flex;
             height: 100vh;
+            height: 100dvh; /* Dynamic viewport height — fixes iOS Safari toolbar overlap */
             overflow: hidden;
             background: var(--slate-gray);
             touch-action: none;
@@ -956,12 +957,14 @@
                 width: 100%;
                 min-width: 100%;
                 max-height: 45vh;
+                max-height: 45dvh;
                 border-left: none;
                 border-top: 1px solid var(--steel-blue);
             }
             
             #canvasContainer {
                 min-height: 55vh;
+                min-height: 55dvh;
             }
         }
 
@@ -1675,13 +1678,19 @@
         // --------------------------------------------------------
 
         setupCanvas() {
+            let firstResize = true;
             const resize = () => {
                 const w = this.container.clientWidth;
                 const h = this.container.clientHeight;
                 if (w > 0 && h > 0) {
                     this.canvas.width = w;
                     this.canvas.height = h;
-                    this.redraw();
+                    if (firstResize) {
+                        firstResize = false;
+                        this.recenterView(); // Sets proper zoom for screen size
+                    } else {
+                        this.redraw();
+                    }
                 }
             };
             // ResizeObserver fires reliably after layout settles (including orientation changes)
@@ -2539,7 +2548,11 @@
         }
 
         recenterView() {
-            this.zoom = 1.0;
+            // Ensure at least 60" of width is visible
+            const minWorldWidth = 60 * CONFIG.PIXELS_PER_INCH; // 60 inches in world pixels
+            const canvasWidth = this.canvas.width;
+            const idealZoom = canvasWidth / minWorldWidth;
+            this.zoom = Math.min(1.0, idealZoom);
             this.panX = 0;
             this.panY = 0;
             this.redraw();

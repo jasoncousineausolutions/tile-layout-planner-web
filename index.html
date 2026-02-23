@@ -3121,7 +3121,7 @@
                     this.pendingLineEndVertex = vIdx;
                     
                     const newLenStr = await customPrompt(
-                        `Current length: ${formatMeasurement(currentLenIn, this.unitMode)}\nEnter new length (accepts decimal or fractions):`,
+                        `Current length: ${formatMeasurement(currentLenIn, this.unitMode)}\nEnter new length (e.g. 24, 3/4, 5'6, 12' 3 1/2"):`,
                         currentLenIn.toFixed(2)
                     );
                     
@@ -3160,7 +3160,9 @@
                     }
                     
                     if (newLenStr !== '') {
-                        const newLenIn = parseUserInput(newLenStr, this.unitMode);
+                        // Trim any invisible/whitespace chars that mobile keyboards might insert
+                        const cleanedStr = newLenStr.replace(/[\u200B\u200C\u200D\uFEFF]/g, '').trim();
+                        const newLenIn = parseUserInput(cleanedStr, this.unitMode);
                         if (!isNaN(newLenIn) && newLenIn > 0) {
                             this.vertices[vIdx] = adjustLineLength(p1, this.vertices[vIdx], newLenIn * CONFIG.PIXELS_PER_INCH);
                         }

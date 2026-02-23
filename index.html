@@ -985,7 +985,7 @@
     <div id="customPromptOverlay">
         <div id="customPromptDialog">
             <div id="customPromptMessage"></div>
-            <input type="text" id="customPromptInput" inputmode="decimal" />
+            <input type="text" id="customPromptInput" />
             <div id="customPromptButtons">
                 <button id="customPromptCancel">Cancel</button>
                 <button id="customPromptOk">OK</button>
@@ -1365,6 +1365,65 @@
         let str = input.trim();
         if (!str) return NaN;
         
+        // ---- Feet parsing ----
+        // Check if input contains a feet marker (apostrophe, smart quotes, prime, backtick, acute)
+        const feetMarkers = /[''\u2018\u2019\u2032\u0060\u00B4]/;
+        if (feetMarkers.test(str)) {
+            // Normalize all feet markers to plain apostrophe
+            let feetStr = str.replace(/[''\u2018\u2019\u2032\u0060\u00B4]/g, "'");
+            // Remove trailing " (straight or smart) if present
+            feetStr = feetStr.replace(/[""\u201C\u201D]\s*$/, '').trim();
+            
+            const feetIdx = feetStr.indexOf("'");
+            const feetPart = feetStr.substring(0, feetIdx).trim();
+            const inchesPart = feetStr.substring(feetIdx + 1).trim();
+            
+            const feet = parseFloat(feetPart);
+            if (isNaN(feet)) return NaN;
+            
+            let totalInches = feet * 12;
+            
+            if (inchesPart.length > 0) {
+                // Parse the inches portion (could be decimal, fraction, or mixed)
+                // Remove trailing " if somehow still there
+                let inStr = inchesPart.replace(/[""\u201C\u201D]\s*$/, '').trim();
+                
+                // Try decimal: 5, 5.5
+                const decMatch = inStr.match(/^(-?\d+\.?\d*)$/);
+                if (decMatch) {
+                    totalInches += parseFloat(decMatch[1]);
+                    return totalInches;
+                }
+                
+                // Try mixed fraction: 5 1/2, 5-1/2
+                const mixedMatch = inStr.match(/^(-?\d+)[\s-]+(\d+)\/(\d+)$/);
+                if (mixedMatch) {
+                    const whole = parseInt(mixedMatch[1]);
+                    const num = parseInt(mixedMatch[2]);
+                    const den = parseInt(mixedMatch[3]);
+                    if (den === 0) return NaN;
+                    totalInches += Math.abs(whole) + num / den;
+                    return totalInches;
+                }
+                
+                // Try plain fraction: 1/2
+                const fracMatch = inStr.match(/^(\d+)\/(\d+)$/);
+                if (fracMatch) {
+                    const num = parseInt(fracMatch[1]);
+                    const den = parseInt(fracMatch[2]);
+                    if (den === 0) return NaN;
+                    totalInches += num / den;
+                    return totalInches;
+                }
+                
+                // Unrecognized inches part — just use the feet
+                return totalInches;
+            }
+            
+            return totalInches;
+        }
+        
+        // ---- Standard parsing (no feet marker) ----
         let lowerStr = str.toLowerCase().replace(/\s+/g, '');
         let unitMultiplier = 1.0;
         let hasExplicitUnit = false;
@@ -2455,6 +2514,9 @@
             this.currentTab = tabName;
             if (tabName === 'finalize') { this.setMode(Mode.FINALIZE); this.detectSurfaces(); }
             else if (tabName === 'surfaceDesign') { if (this.mode === Mode.FINALIZE) this.setMode(Mode.ADD_LINE); }
+            // Watermark link: clickable on Tile Layout and Finalize, disabled on Surface Design
+            const wm = document.getElementById('watermark');
+            wm.style.pointerEvents = (tabName === 'surfaceDesign') ? 'none' : 'auto';
             this.redraw();
         }
 
@@ -3611,11 +3673,24 @@
                 ctx.fillRect(v.x - size, v.y - size, size * 2, size * 2);
             });
             
+            // Highlight the first vertex of the line being drawn
             if (this.mode === Mode.ADD_LINE && this.firstVertex !== null) {
                 const v = this.vertices[this.firstVertex];
                 ctx.strokeStyle = CONFIG.COLORS.VERTEX_SELECTED;
                 ctx.lineWidth = 2 / this.zoom;
                 ctx.beginPath(); ctx.arc(v.x, v.y, 10 / this.zoom, 0, Math.PI * 2); ctx.stroke();
+            }
+            
+            // Highlight snap target vertex during line drawing
+            if (this.mode === Mode.ADD_LINE && this.hoverVertex !== null) {
+                const v = this.vertices[this.hoverVertex];
+                ctx.strokeStyle = CONFIG.COLORS.VERTEX_HOVER;
+                ctx.lineWidth = 2 / this.zoom;
+                ctx.beginPath(); ctx.arc(v.x, v.y, 10 / this.zoom, 0, Math.PI * 2); ctx.stroke();
+                // Fill with a larger handle to make it obvious
+                ctx.fillStyle = CONFIG.COLORS.VERTEX_HOVER;
+                const bigSize = (CONFIG.HANDLE_SIZE + 2) / this.zoom;
+                ctx.fillRect(v.x - bigSize, v.y - bigSize, bigSize * 2, bigSize * 2);
             }
         }
     }

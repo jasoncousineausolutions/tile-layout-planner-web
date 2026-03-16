@@ -608,6 +608,28 @@
             display: none;
         }
         
+        /* Mobile-only sections (hidden on desktop) */
+        .mobile-only-section {
+            display: none;
+        }
+        
+        .toggle-section-btn {
+            width: 100%;
+            padding: 6px;
+            font-size: 12px;
+            background: var(--light-gray);
+            border: 1px solid var(--steel-blue);
+            border-radius: 4px;
+            cursor: pointer;
+            text-align: left;
+            color: var(--steel-blue);
+            margin-top: var(--space-xs);
+        }
+        
+        .collapsible-section {
+            padding-top: var(--space-xs);
+        }
+        
         /* Mobile links footer (hidden on desktop) */
         .mobile-links-footer {
             display: none;
@@ -818,6 +840,11 @@
                 border-top: 1px solid var(--light-gray);
             }
             
+            /* Show mobile-only sections */
+            .mobile-only-section {
+                display: block;
+            }
+            
             /* Show mobile units section inside Tile Layout tab */
             .mobile-units-section {
                 display: block;
@@ -996,7 +1023,7 @@
     <div id="canvasContainer">
         <canvas id="canvas"></canvas>
         <a id="watermark" href="https://sites.google.com/view/jasoncousineausolutions/feb3_2026_tileplannertool" target="_blank">
-            <span>Tile Planner V1.0</span>
+            <span>Tile Planner V1.1</span>
             <span>Jason Cousineau Solutions Inc.</span>
         </a>
         <div id="floatingActions">
@@ -1152,11 +1179,19 @@
             </div>
             
             <div id="finalizeTab" class="tab-pane">
-                <div class="section-title">Surfaces</div>
+                <div class="mobile-only-section">
+                    <button id="btnToggleSelection" class="toggle-section-btn">Surfaces ▼</button>
+                    <div id="selectionCollapsible" class="collapsible-section" style="display: none;">
+                        <div id="surfaceListMobile" class="surface-list">
+                            <p class="hint-text">Surfaces will appear here.</p>
+                        </div>
+                    </div>
+                    <button id="btnClearSurfaceSelectionMobile" disabled>Clear Selection</button>
+                </div>
                 
-                <button id="btnDetectSurfaces" class="primary">Detect Surfaces</button>
+                <div class="section-title mobile-hide">Surfaces</div>
                 
-                <div id="surfaceList" class="surface-list">
+                <div id="surfaceList" class="surface-list mobile-hide">
                     <p class="hint-text">Surfaces will be detected automatically when you switch to this tab.</p>
                 </div>
                 
@@ -1169,9 +1204,29 @@
                 <div class="section-title">Cut Measurements</div>
                 <div class="checkbox-group">
                     <label>
-                        <input type="checkbox" id="showCutMeasurements" disabled>
+                        <input type="checkbox" id="showCutMeasurements" checked disabled>
                         Show partial tile measurements
                     </label>
+                </div>
+                
+                <div id="finalizeAlignmentSection" class="mobile-only-section">
+                    <div class="section-title" style="margin-top: var(--space-xs);">Tile Alignment</div>
+                    <div class="input-group offset-row">
+                        <label id="labelFinalizeOffsetX"><span class="label-full">Offset X:</span><span class="label-short">X Adj.</span></label>
+                        <div class="input-with-buttons">
+                            <button class="offset-btn" data-axis="x" data-dir="-1">−</button>
+                            <input type="text" id="finalizeOffsetX" value="0" inputmode="decimal">
+                            <button class="offset-btn" data-axis="x" data-dir="1">+</button>
+                        </div>
+                    </div>
+                    <div class="input-group offset-row">
+                        <label id="labelFinalizeOffsetY"><span class="label-full">Offset Y:</span><span class="label-short">Y Adj.</span></label>
+                        <div class="input-with-buttons">
+                            <button class="offset-btn" data-axis="y" data-dir="-1">−</button>
+                            <input type="text" id="finalizeOffsetY" value="0" inputmode="decimal">
+                            <button class="offset-btn" data-axis="y" data-dir="1">+</button>
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -1421,6 +1476,39 @@
             }
             
             return totalInches;
+        }
+        
+        // ---- Meters parsing ----
+        // Patterns: 3m, 3m 12cm, 3m12cm, 3.5m, 3m 12cm 4mm, 3m12cm4.4mm, etc.
+        // Check for 'm' (meters marker) but not 'mm' alone
+        const lowerForMeters = str.toLowerCase();
+        if (/\d\s*m(?!\s*m)/i.test(lowerForMeters) || /\d\s*m$/i.test(lowerForMeters)) {
+            let totalMm = 0;
+            let work = str.trim();
+            
+            // Extract meters part
+            const mMatch = work.match(/^(-?\d+\.?\d*)\s*m/i);
+            if (mMatch) {
+                totalMm += parseFloat(mMatch[1]) * 1000;
+                work = work.substring(mMatch[0].length).trim();
+            }
+            
+            // Extract centimeters part (if present)
+            const cmMatch = work.match(/^(\d+\.?\d*)\s*cm/i);
+            if (cmMatch) {
+                totalMm += parseFloat(cmMatch[1]) * 10;
+                work = work.substring(cmMatch[0].length).trim();
+            }
+            
+            // Extract millimeters part (if present)
+            const mmMatch = work.match(/^(\d+\.?\d*)\s*mm/i);
+            if (mmMatch) {
+                totalMm += parseFloat(mmMatch[1]);
+                work = work.substring(mmMatch[0].length).trim();
+            }
+            
+            // If we parsed something, convert mm to inches and return
+            if (totalMm > 0) return totalMm / CONFIG.MM_PER_INCH;
         }
         
         // ---- Standard parsing (no feet marker) ----
@@ -1699,7 +1787,7 @@
             this.detectedSurfaces = [];
             this.selectedSurfaces = [];
             this.hoverSurface = null;
-            this.showCutMeasurements = false;
+            this.showCutMeasurements = true;
             
             // Initialize
             this.setupCanvas();
@@ -1823,7 +1911,11 @@
             
             // Tile settings inputs
             ['tileWidth', 'tileHeight', 'groutWidth', 'offsetX', 'offsetY'].forEach(id => {
-                document.getElementById(id).addEventListener('input', () => this.updateTileSettings());
+                document.getElementById(id).addEventListener('input', () => this.updateTileSettings(id));
+            });
+            // Finalize offset inputs (sync back to main offsets)
+            ['finalizeOffsetX', 'finalizeOffsetY'].forEach(id => {
+                document.getElementById(id).addEventListener('input', () => this.updateTileSettings(id));
             });
             document.getElementById('bondOffset').addEventListener('input', () => this.updateBondOffset());
             document.getElementById('rotation').addEventListener('input', () => this.updateRotation());
@@ -1893,9 +1985,22 @@
             });
             
             // Finalize tab buttons
-            document.getElementById('btnDetectSurfaces').addEventListener('click', () => this.detectSurfaces());
             document.getElementById('btnClearSurfaceSelection').addEventListener('click', () => this.clearSurfaceSelection());
             document.getElementById('btnSelectAll').addEventListener('click', () => this.selectAllSurfaces());
+            
+            // Mobile selection toggle and buttons
+            document.getElementById('btnToggleSelection').addEventListener('click', () => {
+                const section = document.getElementById('selectionCollapsible');
+                const btn = document.getElementById('btnToggleSelection');
+                if (section.style.display === 'none') {
+                    section.style.display = 'block';
+                    btn.textContent = 'Surfaces \u25B2';
+                } else {
+                    section.style.display = 'none';
+                    btn.textContent = 'Surfaces \u25BC';
+                }
+            });
+            document.getElementById('btnClearSurfaceSelectionMobile').addEventListener('click', () => this.clearSurfaceSelection());
             document.getElementById('showCutMeasurements').addEventListener('change', (e) => {
                 this.showCutMeasurements = e.target.checked;
                 this.redraw();
@@ -2420,8 +2525,10 @@
 
         updateSurfaceList() {
             const listEl = document.getElementById('surfaceList');
+            const mobileListEl = document.getElementById('surfaceListMobile');
             if (this.detectedSurfaces.length === 0) {
                 listEl.innerHTML = '<p class="hint-text">No closed surfaces found. Make sure your lines form closed shapes.</p>';
+                mobileListEl.innerHTML = '<p class="hint-text">No surfaces found.</p>';
                 return;
             }
             let html = '';
@@ -2437,8 +2544,13 @@
                     <span>Surface ${i + 1} (${outerBoundary.length} sides)</span></div>`;
             }
             listEl.innerHTML = html;
-            listEl.querySelectorAll('.surface-item').forEach(item => {
-                item.addEventListener('click', () => this.toggleSurfaceSelection(parseInt(item.dataset.surfaceIdx), true));
+            mobileListEl.innerHTML = html;
+            
+            // Bind click handlers on both lists
+            [listEl, mobileListEl].forEach(el => {
+                el.querySelectorAll('.surface-item').forEach(item => {
+                    item.addEventListener('click', () => this.toggleSurfaceSelection(parseInt(item.dataset.surfaceIdx), true));
+                });
             });
         }
 
@@ -2448,6 +2560,8 @@
             document.getElementById('btnClearSurfaceSelection').disabled = !hasSelection;
             document.getElementById('btnSelectAll').disabled = !hasSurfaces;
             document.getElementById('showCutMeasurements').disabled = !hasSelection;
+            // Mobile clear selection button
+            document.getElementById('btnClearSurfaceSelectionMobile').disabled = !hasSelection;
         }
 
         toggleSurfaceSelection(idx) {
@@ -2552,13 +2666,17 @@
             document.getElementById('labelTileWidth').textContent = 'Width' + suffix;
             document.getElementById('labelTileHeight').textContent = 'Height' + suffix;
             document.getElementById('labelGroutWidth').textContent = 'Grout Width' + suffix;
-            // Offset labels have full/short spans
-            const oxFull = document.querySelector('#labelOffsetX .label-full');
-            const oyFull = document.querySelector('#labelOffsetY .label-full');
-            if (oxFull) oxFull.textContent = 'Offset X' + suffix;
-            else document.getElementById('labelOffsetX').textContent = 'Offset X' + suffix;
-            if (oyFull) oyFull.textContent = 'Offset Y' + suffix;
-            else document.getElementById('labelOffsetY').textContent = 'Offset Y' + suffix;
+            // Offset labels have full/short spans (both in Surface Design and Finalize tabs)
+            ['#labelOffsetX', '#labelFinalizeOffsetX'].forEach(sel => {
+                const full = document.querySelector(sel + ' .label-full');
+                if (full) full.textContent = 'Offset X' + suffix;
+                else { const el = document.querySelector(sel); if (el) el.textContent = 'Offset X' + suffix; }
+            });
+            ['#labelOffsetY', '#labelFinalizeOffsetY'].forEach(sel => {
+                const full = document.querySelector(sel + ' .label-full');
+                if (full) full.textContent = 'Offset Y' + suffix;
+                else { const el = document.querySelector(sel); if (el) el.textContent = 'Offset Y' + suffix; }
+            });
         }
 
         updateTileInputFields() {
@@ -2569,17 +2687,30 @@
             document.getElementById('groutWidth').value = format(this.groutWidthInches);
             document.getElementById('offsetX').value = format(this.offsetXInches);
             document.getElementById('offsetY').value = format(this.offsetYInches);
+            // Sync finalize offset fields
+            document.getElementById('finalizeOffsetX').value = format(this.offsetXInches);
+            document.getElementById('finalizeOffsetY').value = format(this.offsetYInches);
         }
 
-        updateTileSettings() {
+        updateTileSettings(sourceId) {
             const getValue = (id) => parseUserInput(document.getElementById(id).value, this.unitMode);
             const tileW = getValue('tileWidth'), tileH = getValue('tileHeight');
-            const groutW = getValue('groutWidth'), offX = getValue('offsetX'), offY = getValue('offsetY');
+            const groutW = getValue('groutWidth');
+            // Read offsets from whichever field was edited
+            let offX, offY;
+            if (sourceId === 'finalizeOffsetX' || sourceId === 'finalizeOffsetY') {
+                offX = getValue('finalizeOffsetX');
+                offY = getValue('finalizeOffsetY');
+            } else {
+                offX = getValue('offsetX');
+                offY = getValue('offsetY');
+            }
             if (!isNaN(tileW) && tileW > 0) this.tileWidthInches = tileW;
             if (!isNaN(tileH) && tileH > 0) this.tileHeightInches = tileH;
             if (!isNaN(groutW) && groutW >= 0) this.groutWidthInches = groutW;
             if (!isNaN(offX)) this.offsetXInches = offX;
             if (!isNaN(offY)) this.offsetYInches = offY;
+            this.updateTileInputFields(); // Syncs both sets of fields
             this.redraw();
         }
 
@@ -3121,7 +3252,7 @@
                     this.pendingLineEndVertex = vIdx;
                     
                     const newLenStr = await customPrompt(
-                        `Current length: ${formatMeasurement(currentLenIn, this.unitMode)}\nEnter new length (e.g. 24, 3/4, 5'6, 12' 3 1/2"):`,
+                        `Current length: ${formatMeasurement(currentLenIn, this.unitMode)}\nEnter new length (e.g. 24, 3/4, 5'6, 2m 50cm):`,
                         currentLenIn.toFixed(2)
                     );
                     
@@ -3271,7 +3402,7 @@
             ctx.textAlign = 'right';
             ctx.textBaseline = 'bottom';
             ctx.font = '500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-            ctx.fillText('Tile Planner V1.0', w - 14, h - 22);
+            ctx.fillText('Tile Planner V1.1', w - 14, h - 22);
             ctx.font = '500 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
             ctx.fillText('Jason Cousineau Solutions Inc.', w - 14, h - 8);
             ctx.restore();
@@ -3376,6 +3507,7 @@
                 }
             }
             this.drawPartialTileLabels(partialTiles, tileW, tileH);
+            this.drawBoundaryCutLabels(surface, partialTiles, tileW, tileH, effectiveTileW, effectiveTileH, offsetX, offsetY, rotationRad);
         }
 
         transformTilePoint(x, y, offsetX, offsetY, rotationRad) {
@@ -3412,7 +3544,8 @@
                 center: { x: (tileCorners[0].x + tileCorners[2].x) / 2, y: (tileCorners[0].y + tileCorners[2].y) / 2 },
                 corners: tileCorners,
                 cutEdges: this.findCutEdges(tileCorners, surface),
-                cornersInside
+                cornersInside,
+                _surface: surface
             };
         }
 
@@ -3424,29 +3557,53 @@
             
             for (let i = 0; i < 4; i++) {
                 const edgeStart = tileCorners[i], edgeEnd = tileCorners[(i + 1) % 4];
-                const intersections = [{ point: edgeStart, t: 0, inside: this.pointInSurface(edgeStart, surface) }];
+                
+                // Collect intersection points along this edge
+                const intersections = [];
                 
                 for (const polygon of boundaryPolygons) {
                     for (let j = 0; j < polygon.length; j++) {
                         const intersection = lineSegmentIntersection(edgeStart, edgeEnd, polygon[j], polygon[(j+1) % polygon.length]);
                         if (intersection) {
-                            const t = distance(edgeStart, intersection) / distance(edgeStart, edgeEnd);
-                            if (t > 0.001 && t < 0.999) intersections.push({ point: intersection, t, inside: null });
+                            const edgeLen = distance(edgeStart, edgeEnd);
+                            if (edgeLen < 0.001) continue;
+                            const t = distance(edgeStart, intersection) / edgeLen;
+                            if (t > 0.0005 && t < 0.9995) {
+                                intersections.push({ point: intersection, t });
+                            }
                         }
                     }
                 }
                 
-                intersections.push({ point: edgeEnd, t: 1, inside: this.pointInSurface(edgeEnd, surface) });
+                // Dedup intersection points that are very close
                 intersections.sort((a, b) => a.t - b.t);
-                
-                for (let j = 0; j < intersections.length; j++) {
-                    if (intersections[j].inside === null) intersections[j].inside = !intersections[j - 1].inside;
+                const dedupedInts = [];
+                for (const pt of intersections) {
+                    if (dedupedInts.length === 0 || pt.t - dedupedInts[dedupedInts.length - 1].t > 0.001) {
+                        dedupedInts.push(pt);
+                    }
                 }
                 
-                for (let j = 0; j < intersections.length - 1; j++) {
-                    const mid = { x: (intersections[j].point.x + intersections[j+1].point.x) / 2, y: (intersections[j].point.y + intersections[j+1].point.y) / 2 };
+                // Build segments: start, [intersections], end
+                const allPoints = [
+                    { point: edgeStart, t: 0 },
+                    ...dedupedInts,
+                    { point: edgeEnd, t: 1 }
+                ];
+                
+                // Check each segment: if its midpoint is inside the surface, it's a visible edge
+                for (let j = 0; j < allPoints.length - 1; j++) {
+                    const segStart = allPoints[j].point, segEnd = allPoints[j + 1].point;
+                    const segLen = distance(segStart, segEnd);
+                    if (segLen < 0.1) continue;
+                    
+                    // Check midpoint — more reliable than endpoints for on-boundary cases
+                    const mid = { x: (segStart.x + segEnd.x) / 2, y: (segStart.y + segEnd.y) / 2 };
                     if (this.pointInSurface(mid, surface)) {
-                        cutEdges.push({ start: intersections[j].point, end: intersections[j+1].point, length: distance(intersections[j].point, intersections[j+1].point), tileEdgeIndex: i });
+                        cutEdges.push({
+                            start: segStart, end: segEnd,
+                            length: segLen, tileEdgeIndex: i
+                        });
                     }
                 }
             }
@@ -3455,40 +3612,258 @@
 
         drawPartialTileLabels(partialTiles, tileW, tileH) {
             const ctx = this.ctx;
-            const drawnLabels = [];
-            const fullWidthIn = tileW / CONFIG.PIXELS_PER_INCH, fullHeightIn = tileH / CONFIG.PIXELS_PER_INCH;
-            const tolerance = 0.1;
+            const fullWidthIn = tileW / CONFIG.PIXELS_PER_INCH;
+            const fullHeightIn = tileH / CONFIG.PIXELS_PER_INCH;
+            const tolerance = 0.15; // inches
+            
+            // Collect all candidate labels first, then dedup
+            const candidates = [];
             
             for (const tile of partialTiles) {
                 if (!tile.cutEdges || tile.cutEdges.length === 0) continue;
+                
+                // Track which axes have a cut-edge label
+                let hasWidthCutLabel = false;
+                let hasHeightCutLabel = false;
+                
                 for (const edge of tile.cutEdges) {
                     const edgeLenIn = edge.length / CONFIG.PIXELS_PER_INCH;
-                    if (Math.abs(edgeLenIn - fullWidthIn) < tolerance || Math.abs(edgeLenIn - fullHeightIn) < tolerance) continue;
-                    const midpoint = { x: (edge.start.x + edge.end.x) / 2, y: (edge.start.y + edge.end.y) / 2 };
-                    if (drawnLabels.some(pos => distance(midpoint, pos) < 25 / this.zoom)) continue;
+                    const isWidthEdge = (edge.tileEdgeIndex === 0 || edge.tileEdgeIndex === 2);
+                    const fullDim = isWidthEdge ? fullWidthIn : fullHeightIn;
                     
-                    const label = formatMeasurement(edgeLenIn, this.unitMode);
-                    const angle = Math.atan2(edge.end.y - edge.start.y, edge.end.x - edge.start.x);
-                    
-                    ctx.save();
-                    ctx.translate(midpoint.x, midpoint.y);
-                    ctx.scale(1 / this.zoom, 1 / this.zoom);
-                    let displayAngle = angle;
-                    if (displayAngle > Math.PI / 2) displayAngle -= Math.PI;
-                    if (displayAngle < -Math.PI / 2) displayAngle += Math.PI;
-                    ctx.rotate(displayAngle);
-                    ctx.font = 'bold 10px sans-serif';
-                    const metrics = ctx.measureText(label);
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-                    ctx.fillRect(-metrics.width/2 - 2, -9, metrics.width + 4, 15);
-                    ctx.fillStyle = '#c00';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(label, 0, 0);
-                    ctx.restore();
-                    drawnLabels.push(midpoint);
+                    if (edgeLenIn < fullDim - tolerance && edgeLenIn > 0.05) {
+                        const midpoint = {
+                            x: (edge.start.x + edge.end.x) / 2,
+                            y: (edge.start.y + edge.end.y) / 2
+                        };
+                        // Offset label slightly toward tile center so it doesn't sit on the edge line
+                        const offsetDist = 8 / this.zoom;
+                        const toCenterX = tile.center.x - midpoint.x;
+                        const toCenterY = tile.center.y - midpoint.y;
+                        const toCenterLen = Math.sqrt(toCenterX * toCenterX + toCenterY * toCenterY);
+                        const labelMidpoint = toCenterLen > 0.01 ? {
+                            x: midpoint.x + (toCenterX / toCenterLen) * offsetDist,
+                            y: midpoint.y + (toCenterY / toCenterLen) * offsetDist
+                        } : midpoint;
+                        const angle = Math.atan2(edge.end.y - edge.start.y, edge.end.x - edge.start.x);
+                        candidates.push({ midpoint: labelMidpoint, length: edgeLenIn, angle });
+                        if (isWidthEdge) hasWidthCutLabel = true;
+                        else hasHeightCutLabel = true;
+                    }
                 }
             }
+            
+            // Dedup: proximity first, then collapse collinear groups of 3+ same value to first + last
+            const uniqueLabels = [];
+            const dedupDist = 30 / this.zoom;
+            
+            for (const cand of candidates) {
+                const roundedLen = Math.round(cand.length * 100) / 100;
+                const isDuplicate = uniqueLabels.some(existing => {
+                    const existingRounded = Math.round(existing.length * 100) / 100;
+                    return Math.abs(roundedLen - existingRounded) < 0.02 &&
+                           distance(cand.midpoint, existing.midpoint) < dedupDist;
+                });
+                if (!isDuplicate) uniqueLabels.push(cand);
+            }
+            
+            const labels = this.collapseRepeatedLabels(uniqueLabels);
+            
+            for (const label of labels) {
+                this.drawMeasurementLabel(ctx, formatMeasurement(label.length, this.unitMode), label.midpoint, label.angle);
+            }
+        }
+        
+        drawMeasurementLabel(ctx, text, midpoint, angle) {
+            ctx.save();
+            ctx.translate(midpoint.x, midpoint.y);
+            ctx.scale(1 / this.zoom, 1 / this.zoom);
+            let displayAngle = angle;
+            if (displayAngle > Math.PI / 2) displayAngle -= Math.PI;
+            if (displayAngle < -Math.PI / 2) displayAngle += Math.PI;
+            ctx.rotate(displayAngle);
+            ctx.font = 'bold 10px sans-serif';
+            const metrics = ctx.measureText(text);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.fillRect(-metrics.width/2 - 2, -9, metrics.width + 4, 15);
+            ctx.fillStyle = '#c00';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 0, 0);
+            ctx.restore();
+        }
+        
+        drawBoundaryCutLabels(surface, partialTiles, tileW, tileH, effectiveTileW, effectiveTileH, offsetX, offsetY, rotationRad) {
+            const ctx = this.ctx;
+            const fullWidthIn = tileW / CONFIG.PIXELS_PER_INCH;
+            const fullHeightIn = tileH / CONFIG.PIXELS_PER_INCH;
+            const tolerance = 0.15;
+            
+            // Collect all boundary edges (outer + holes)
+            const outerBoundary = this.getSurfaceOuterBoundary(surface);
+            const boundaries = [outerBoundary];
+            if (surface.holes) for (const hole of surface.holes) boundaries.push(hole);
+            
+            const candidates = [];
+            
+            for (const boundary of boundaries) {
+                for (let i = 0; i < boundary.length; i++) {
+                    const bStart = this.vertices[boundary[i]];
+                    const bEnd = this.vertices[boundary[(i + 1) % boundary.length]];
+                    const bLen = distance(bStart, bEnd);
+                    if (bLen < 0.5) continue;
+                    
+                    // For each boundary edge, find which partial tiles it intersects
+                    for (const tile of partialTiles) {
+                        const corners = tile.corners;
+                        
+                        // Find intersections of this boundary edge with all 4 tile edges
+                        const hits = [];
+                        for (let e = 0; e < 4; e++) {
+                            const tStart = corners[e], tEnd = corners[(e + 1) % 4];
+                            const inter = lineSegmentIntersection(bStart, bEnd, tStart, tEnd);
+                            if (inter) {
+                                const t = distance(bStart, inter) / bLen;
+                                hits.push({ point: inter, t });
+                            }
+                        }
+                        
+                        // Also check if boundary endpoints are inside the tile
+                        // (for boundary edges that start/end inside a tile)
+                        const bStartInTile = this.pointInTileBounds(bStart, corners, tileW, tileH);
+                        const bEndInTile = this.pointInTileBounds(bEnd, corners, tileW, tileH);
+                        if (bStartInTile) hits.push({ point: bStart, t: 0 });
+                        if (bEndInTile) hits.push({ point: bEnd, t: 1 });
+                        
+                        if (hits.length < 2) continue;
+                        
+                        // Sort by t and take the min/max to get the segment within this tile
+                        hits.sort((a, b) => a.t - b.t);
+                        const segStart = hits[0].point;
+                        const segEnd = hits[hits.length - 1].point;
+                        const segLen = distance(segStart, segEnd);
+                        const segLenIn = segLen / CONFIG.PIXELS_PER_INCH;
+                        
+                        if (segLenIn < 0.1) continue;
+                        // Skip if segment length equals full tile width or height (not a cut)
+                        if (Math.abs(segLenIn - fullWidthIn) < tolerance) continue;
+                        if (Math.abs(segLenIn - fullHeightIn) < tolerance) continue;
+                        
+                        const midpoint = {
+                            x: (segStart.x + segEnd.x) / 2,
+                            y: (segStart.y + segEnd.y) / 2
+                        };
+                        // Offset label perpendicular to the boundary, toward the surface interior
+                        const angle = Math.atan2(segEnd.y - segStart.y, segEnd.x - segStart.x);
+                        // Perpendicular direction (rotate 90 degrees)
+                        const perpX = -Math.sin(angle);
+                        const perpY = Math.cos(angle);
+                        // Test which side is inside the surface
+                        const offsetDist = 8 / this.zoom;
+                        const testInward = {
+                            x: midpoint.x + perpX * offsetDist,
+                            y: midpoint.y + perpY * offsetDist
+                        };
+                        const testOutward = {
+                            x: midpoint.x - perpX * offsetDist,
+                            y: midpoint.y - perpY * offsetDist
+                        };
+                        const inwardIsInside = this.pointInSurface(testInward, surface);
+                        const labelOffset = inwardIsInside ? 1 : -1;
+                        const labelMidpoint = {
+                            x: midpoint.x + perpX * offsetDist * labelOffset,
+                            y: midpoint.y + perpY * offsetDist * labelOffset
+                        };
+                        candidates.push({ midpoint: labelMidpoint, length: segLenIn, angle });
+                    }
+                }
+            }
+            
+            // Dedup boundary labels: proximity dedup first, then collapse runs of 3+
+            const dedupDist = 25 / this.zoom;
+            const uniqueLabels = [];
+            for (const cand of candidates) {
+                const roundedLen = Math.round(cand.length * 100) / 100;
+                const isDuplicate = uniqueLabels.some(existing => {
+                    const existingRounded = Math.round(existing.length * 100) / 100;
+                    return Math.abs(roundedLen - existingRounded) < 0.02 &&
+                           distance(cand.midpoint, existing.midpoint) < dedupDist;
+                });
+                if (!isDuplicate) uniqueLabels.push(cand);
+            }
+            
+            const labels = this.collapseRepeatedLabels(uniqueLabels);
+            
+            for (const label of labels) {
+                this.drawMeasurementLabel(ctx, formatMeasurement(label.length, this.unitMode), label.midpoint, label.angle);
+            }
+        }
+        
+        pointInTileBounds(point, corners, tileW, tileH) {
+            // Project point onto tile's local axes and check if within bounds
+            const wVec = { x: corners[1].x - corners[0].x, y: corners[1].y - corners[0].y };
+            const hVec = { x: corners[3].x - corners[0].x, y: corners[3].y - corners[0].y };
+            const wMag = Math.sqrt(wVec.x * wVec.x + wVec.y * wVec.y);
+            const hMag = Math.sqrt(hVec.x * hVec.x + hVec.y * hVec.y);
+            if (wMag < 0.01 || hMag < 0.01) return false;
+            const dx = point.x - corners[0].x, dy = point.y - corners[0].y;
+            const wP = (dx * wVec.x + dy * wVec.y) / (wMag * wMag);
+            const hP = (dx * hVec.x + dy * hVec.y) / (hMag * hMag);
+            return wP >= -0.01 && wP <= 1.01 && hP >= -0.01 && hP <= 1.01;
+        }
+        
+        collapseRepeatedLabels(labels) {
+            // Group labels by same rounded measurement AND similar angle (within ~10 degrees)
+            // Then for each group of 3+, keep only the two most extreme (first and last spatially)
+            const angleTolerance = 0.2; // radians (~11 degrees)
+            const groups = [];
+            const used = new Array(labels.length).fill(false);
+            
+            for (let i = 0; i < labels.length; i++) {
+                if (used[i]) continue;
+                const roundedVal = Math.round(labels[i].length * 100) / 100;
+                // Normalize angle to 0..PI range for comparison (since labels can face either way)
+                let normAngle = labels[i].angle % Math.PI;
+                if (normAngle < 0) normAngle += Math.PI;
+                
+                const group = [labels[i]];
+                used[i] = true;
+                
+                for (let j = i + 1; j < labels.length; j++) {
+                    if (used[j]) continue;
+                    const otherRounded = Math.round(labels[j].length * 100) / 100;
+                    if (Math.abs(roundedVal - otherRounded) > 0.02) continue;
+                    
+                    let otherAngle = labels[j].angle % Math.PI;
+                    if (otherAngle < 0) otherAngle += Math.PI;
+                    let angleDiff = Math.abs(normAngle - otherAngle);
+                    if (angleDiff > Math.PI / 2) angleDiff = Math.PI - angleDiff;
+                    
+                    if (angleDiff < angleTolerance) {
+                        group.push(labels[j]);
+                        used[j] = true;
+                    }
+                }
+                groups.push(group);
+            }
+            
+            const result = [];
+            for (const group of groups) {
+                if (group.length < 3) {
+                    result.push(...group);
+                } else {
+                    // Find the two labels that are farthest apart
+                    let maxDist = 0, a = 0, b = 0;
+                    for (let i = 0; i < group.length; i++) {
+                        for (let j = i + 1; j < group.length; j++) {
+                            const d = distance(group[i].midpoint, group[j].midpoint);
+                            if (d > maxDist) { maxDist = d; a = i; b = j; }
+                        }
+                    }
+                    result.push(group[a], group[b]);
+                }
+            }
+            return result;
         }
 
         drawLabel(text, worldX, worldY, color, offsetX = 5, offsetY = -5) {

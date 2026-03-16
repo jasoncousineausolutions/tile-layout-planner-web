@@ -396,6 +396,43 @@
             background: var(--white);
         }
         
+        .tile-count-summary {
+            border: 1px solid var(--light-gray);
+            border-radius: 4px;
+            padding: var(--space-sm);
+            margin: var(--space-sm) 0;
+            background: var(--white);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        
+        .tile-count-summary .count-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 2px 0;
+        }
+        
+        .tile-count-summary .count-label {
+            color: var(--steel-blue);
+        }
+        
+        .tile-count-summary .count-value {
+            font-weight: 600;
+            color: var(--slate-gray);
+        }
+        
+        .tile-count-summary .count-total {
+            border-top: 1px solid var(--light-gray);
+            margin-top: 4px;
+            padding-top: 4px;
+            font-weight: 600;
+        }
+        
+        .tile-count-summary .count-total .count-value {
+            color: var(--electric-blue);
+            font-size: 14px;
+        }
+        
         .surface-item {
             display: flex;
             align-items: center;
@@ -1205,8 +1242,19 @@
                 <div class="checkbox-group">
                     <label>
                         <input type="checkbox" id="showCutMeasurements" checked disabled>
-                        Show partial tile measurements
+                        Show Measurements
                     </label>
+                </div>
+                <div class="checkbox-group">
+                    <label>
+                        <input type="checkbox" id="showAngles" disabled>
+                        Show Angles
+                    </label>
+                </div>
+                
+                <div class="section-title">Tile Estimate (Beta)</div>
+                <div id="tileCountSummary" class="tile-count-summary">
+                    <p class="hint-text">Select surfaces to see tile estimate.</p>
                 </div>
                 
                 <div id="finalizeAlignmentSection" class="mobile-only-section">
@@ -1788,6 +1836,7 @@
             this.selectedSurfaces = [];
             this.hoverSurface = null;
             this.showCutMeasurements = true;
+            this.showAngles = false;
             
             // Initialize
             this.setupCanvas();
@@ -2003,6 +2052,10 @@
             document.getElementById('btnClearSurfaceSelectionMobile').addEventListener('click', () => this.clearSurfaceSelection());
             document.getElementById('showCutMeasurements').addEventListener('change', (e) => {
                 this.showCutMeasurements = e.target.checked;
+                this.redraw();
+            });
+            document.getElementById('showAngles').addEventListener('change', (e) => {
+                this.showAngles = e.target.checked;
                 this.redraw();
             });
         }
@@ -2560,8 +2613,172 @@
             document.getElementById('btnClearSurfaceSelection').disabled = !hasSelection;
             document.getElementById('btnSelectAll').disabled = !hasSurfaces;
             document.getElementById('showCutMeasurements').disabled = !hasSelection;
+            document.getElementById('showAngles').disabled = !hasSelection;
             // Mobile clear selection button
             document.getElementById('btnClearSurfaceSelectionMobile').disabled = !hasSelection;
+            this.updateTileCount();
+        }
+        
+        updateTileCount() {
+            const el = document.getElementById('tileCountSummary');
+            if (this.selectedSurfaces.length === 0) {
+                el.innerHTML = '<p class="hint-text">Select surfaces to see tile estimate.</p>';
+                return;
+            }
+            
+            const tileW = this.tileWidthInches * CONFIG.PIXELS_PER_INCH;
+            const tileH = this.tileHeightInches * CONFIG.PIXELS_PER_INCH;
+            const groutW = this.groutWidthInches * CONFIG.PIXELS_PER_INCH;
+            const offsetX = this.offsetXInches * CONFIG.PIXELS_PER_INCH;
+            const offsetY = this.offsetYInches * CONFIG.PIXELS_PER_INCH;
+            const rotationRad = (this.rotationDegrees * Math.PI) / 180;
+            const effectiveTileW = tileW + groutW, effectiveTileH = tileH + groutW;
+            if (effectiveTileW <= 1 || effectiveTileH <= 1) return;
+            
+            const fullWidthIn = tileW / CONFIG.PIXELS_PER_INCH;
+            const fullHeightIn = tileH / CONFIG.PIXELS_PER_INCH;
+            const tolerance = 0.15;
+            
+            let fullTiles = 0;
+            const widthCuts = [];
+            const heightCuts = [];
+            let diagonalCuts = 0;
+            
+            for (const surfaceIdx of this.selectedSurfaces) {
+                const surface = this.detectedSurfaces[surfaceIdx];
+                if (!surface) continue;
+                
+                const outerBoundary = this.getSurfaceOuterBoundary(surface);
+                const polygon = outerBoundary.map(i => this.vertices[i]);
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                for (const pt of polygon) { minX = Math.min(minX, pt.x); minY = Math.min(minY, pt.y); maxX = Math.max(maxX, pt.x); maxY = Math.max(maxY, pt.y); }
+                
+                const cosR = Math.cos(-rotationRad), sinR = Math.sin(-rotationRad);
+                const worldCorners = [
+                    { x: minX - offsetX, y: minY - offsetY }, { x: maxX - offsetX, y: minY - offsetY },
+                    { x: minX - offsetX, y: maxY - offsetY }, { x: maxX - offsetX, y: maxY - offsetY }
+                ];
+                const gridCorners = worldCorners.map(c => ({ x: c.x * cosR - c.y * sinR, y: c.x * sinR + c.y * cosR }));
+                let gMinX = Infinity, gMinY = Infinity, gMaxX = -Infinity, gMaxY = -Infinity;
+                for (const c of gridCorners) { gMinX = Math.min(gMinX, c.x); gMinY = Math.min(gMinY, c.y); gMaxX = Math.max(gMaxX, c.x); gMaxY = Math.max(gMaxY, c.y); }
+                const padding = Math.max(effectiveTileW, effectiveTileH) * 2;
+                gMinX -= padding; gMinY -= padding; gMaxX += padding; gMaxY += padding;
+                
+                const startCol = Math.floor(gMinX / effectiveTileW) - 1, endCol = Math.ceil(gMaxX / effectiveTileW) + 1;
+                const startRow = Math.floor(gMinY / effectiveTileH) - 1, endRow = Math.ceil(gMaxY / effectiveTileH) + 1;
+                
+                for (let row = startRow; row <= endRow; row++) {
+                    const rowOffset = (row % 2) * this.bondOffset * effectiveTileW;
+                    for (let col = startCol; col <= endCol; col++) {
+                        let tileX = col * effectiveTileW + rowOffset, tileY = row * effectiveTileH;
+                        const tileCorners = [
+                            this.transformTilePoint(tileX, tileY, offsetX, offsetY, rotationRad),
+                            this.transformTilePoint(tileX + tileW, tileY, offsetX, offsetY, rotationRad),
+                            this.transformTilePoint(tileX + tileW, tileY + tileH, offsetX, offsetY, rotationRad),
+                            this.transformTilePoint(tileX, tileY + tileH, offsetX, offsetY, rotationRad)
+                        ];
+                        
+                        let cornersInside = 0;
+                        for (const corner of tileCorners) if (this.pointInSurface(corner, surface)) cornersInside++;
+                        
+                        if (cornersInside === 4) { fullTiles++; continue; }
+                        
+                        if (cornersInside === 0) {
+                            let hasIntersection = false;
+                            const boundaries = [outerBoundary.map(i => this.vertices[i])];
+                            if (surface.holes) for (const hole of surface.holes) boundaries.push(hole.map(i => this.vertices[i]));
+                            for (const poly of boundaries) {
+                                for (let pi = 0; pi < poly.length && !hasIntersection; pi++) {
+                                    for (let tj = 0; tj < 4; tj++) {
+                                        if (lineSegmentIntersection(poly[pi], poly[(pi+1) % poly.length], tileCorners[tj], tileCorners[(tj+1) % 4])) {
+                                            hasIntersection = true; break;
+                                        }
+                                    }
+                                }
+                            }
+                            if (!hasIntersection) continue;
+                        }
+                        
+                        // Partial tile — analyze the cut type
+                        const cutEdges = this.findCutEdges(tileCorners, surface);
+                        let widthCut = null, heightCut = null, hasDiagonal = false;
+                        
+                        for (const edge of cutEdges) {
+                            const edgeLenIn = edge.length / CONFIG.PIXELS_PER_INCH;
+                            const isWidthEdge = (edge.tileEdgeIndex === 0 || edge.tileEdgeIndex === 2);
+                            const fullDim = isWidthEdge ? fullWidthIn : fullHeightIn;
+                            if (edgeLenIn < fullDim - tolerance && edgeLenIn > 0.05) {
+                                if (isWidthEdge) widthCut = Math.min(widthCut || 999, edgeLenIn);
+                                else heightCut = Math.min(heightCut || 999, edgeLenIn);
+                            }
+                        }
+                        
+                        // Check for diagonal boundary cuts
+                        const bEdges = [outerBoundary];
+                        if (surface.holes) for (const hole of surface.holes) bEdges.push(hole);
+                        for (const boundary of bEdges) {
+                            for (let bi = 0; bi < boundary.length && !hasDiagonal; bi++) {
+                                const bStart = this.vertices[boundary[bi]];
+                                const bEnd = this.vertices[boundary[(bi + 1) % boundary.length]];
+                                const bAngle = Math.atan2(bEnd.y - bStart.y, bEnd.x - bStart.x) - rotationRad;
+                                let norm = ((bAngle % (Math.PI / 2)) + Math.PI / 2) % (Math.PI / 2);
+                                let sawAngle = norm;
+                                if (sawAngle > Math.PI / 4) sawAngle = Math.PI / 2 - sawAngle;
+                                if (sawAngle * 180 / Math.PI > 0.5) {
+                                    for (let te = 0; te < 4; te++) {
+                                        if (lineSegmentIntersection(bStart, bEnd, tileCorners[te], tileCorners[(te+1) % 4])) {
+                                            hasDiagonal = true; break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (hasDiagonal) {
+                            diagonalCuts++;
+                        } else if (widthCut !== null && heightCut !== null) {
+                            diagonalCuts++; // two-axis cut, can't pair
+                        } else if (widthCut !== null) {
+                            widthCuts.push(widthCut);
+                        } else if (heightCut !== null) {
+                            heightCuts.push(heightCut);
+                        } else {
+                            diagonalCuts++;
+                        }
+                    }
+                }
+            }
+            
+            // Greedy pairing: sort cuts descending, pair largest with smallest that fits
+            const pairCuts = (cuts, fullDim) => {
+                const sorted = cuts.slice().sort((a, b) => b - a);
+                const used = new Array(sorted.length).fill(false);
+                let tilesNeeded = 0;
+                for (let i = 0; i < sorted.length; i++) {
+                    if (used[i]) continue;
+                    used[i] = true;
+                    tilesNeeded++;
+                    const remaining = fullDim - sorted[i];
+                    for (let j = i + 1; j < sorted.length; j++) {
+                        if (!used[j] && sorted[j] <= remaining + 0.01) {
+                            used[j] = true; break;
+                        }
+                    }
+                }
+                return tilesNeeded;
+            };
+            
+            const widthTilesNeeded = pairCuts(widthCuts, fullWidthIn);
+            const heightTilesNeeded = pairCuts(heightCuts, fullHeightIn);
+            const totalPartialTiles = widthTilesNeeded + heightTilesNeeded + diagonalCuts;
+            const totalTiles = fullTiles + totalPartialTiles;
+            
+            el.innerHTML =
+                '<div class="count-row"><span class="count-label">Full tiles (no cuts):</span><span class="count-value">' + fullTiles + '</span></div>' +
+                '<div class="count-row"><span class="count-label">Width cuts (paired):</span><span class="count-value">' + widthCuts.length + ' cuts \u2192 ' + widthTilesNeeded + ' tiles</span></div>' +
+                '<div class="count-row"><span class="count-label">Height cuts (paired):</span><span class="count-value">' + heightCuts.length + ' cuts \u2192 ' + heightTilesNeeded + ' tiles</span></div>' +
+                (diagonalCuts > 0 ? '<div class="count-row"><span class="count-label">Diagonal/complex cuts:</span><span class="count-value">' + diagonalCuts + ' tiles</span></div>' : '') +
+                '<div class="count-row count-total"><span class="count-label">Estimated tiles to buy:</span><span class="count-value">' + totalTiles + '</span></div>';
         }
 
         toggleSurfaceSelection(idx) {
@@ -2711,6 +2928,7 @@
             if (!isNaN(offX)) this.offsetXInches = offX;
             if (!isNaN(offY)) this.offsetYInches = offY;
             this.updateTileInputFields(); // Syncs both sets of fields
+            if (this.currentTab === 'finalize') this.updateTileCount();
             this.redraw();
         }
 
@@ -2737,6 +2955,7 @@
             if (axis === 'x') this.offsetXInches += direction * step;
             else this.offsetYInches += direction * step;
             this.updateTileInputFields();
+            if (this.currentTab === 'finalize') this.updateTileCount();
             this.redraw();
         }
 
@@ -3443,7 +3662,7 @@
                 if (isSelected) this.drawDotPatternInSurface(surface);
             }
             
-            if (this.showCutMeasurements && this.selectedSurfaces.length > 0) {
+            if ((this.showCutMeasurements || this.showAngles) && this.selectedSurfaces.length > 0) {
                 for (const surfaceIdx of this.selectedSurfaces) this.drawPartialTileMeasurements(this.detectedSurfaces[surfaceIdx]);
             }
         }
@@ -3506,8 +3725,13 @@
                     if (tileInfo && tileInfo.isPartial) partialTiles.push(tileInfo);
                 }
             }
-            this.drawPartialTileLabels(partialTiles, tileW, tileH);
-            this.drawBoundaryCutLabels(surface, partialTiles, tileW, tileH, effectiveTileW, effectiveTileH, offsetX, offsetY, rotationRad);
+            if (this.showCutMeasurements) {
+                this.drawPartialTileLabels(partialTiles, tileW, tileH);
+                this.drawBoundaryCutLabels(surface, partialTiles, tileW, tileH, effectiveTileW, effectiveTileH, offsetX, offsetY, rotationRad);
+            }
+            if (this.showAngles) {
+                this.drawCutAngles(surface, partialTiles, rotationRad);
+            }
         }
 
         transformTilePoint(x, y, offsetX, offsetY, rotationRad) {
@@ -3798,6 +4022,162 @@
                 this.drawMeasurementLabel(ctx, formatMeasurement(label.length, this.unitMode), label.midpoint, label.angle);
             }
         }
+        
+        drawCutAngles(surface, partialTiles, rotationRad) {
+            const ctx = this.ctx;
+            const outerBoundary = this.getSurfaceOuterBoundary(surface);
+            const boundaries = [outerBoundary];
+            if (surface.holes) for (const hole of surface.holes) boundaries.push(hole);
+            
+            const drawnAngles = [];
+            
+            for (const boundary of boundaries) {
+                const n = boundary.length;
+                if (n < 3) continue;
+                
+                for (let i = 0; i < n; i++) {
+                    const bStart = this.vertices[boundary[i]];
+                    const bEnd = this.vertices[boundary[(i + 1) % n]];
+                    const bLen = distance(bStart, bEnd);
+                    if (bLen < 1) continue;
+                    
+                    const actualEdgeAngle = Math.atan2(bEnd.y - bStart.y, bEnd.x - bStart.x);
+                    const edgeAngle = actualEdgeAngle - rotationRad;
+                    let normAngle = ((edgeAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+                    const quadrant = normAngle % (Math.PI / 2);
+                    let sawAngle = quadrant;
+                    if (sawAngle > Math.PI / 4) sawAngle = Math.PI / 2 - sawAngle;
+                    if (sawAngle * 180 / Math.PI < 0.5) continue;
+                    
+                    for (const tile of partialTiles) {
+                        const corners = tile.corners;
+                        for (let e = 0; e < 4; e++) {
+                            const tStart = corners[e];
+                            const tEnd = corners[(e + 1) % 4];
+                            const inter = lineSegmentIntersection(bStart, bEnd, tStart, tEnd);
+                            if (!inter) continue;
+                            
+                            const teLen = distance(tStart, tEnd);
+                            if (teLen < 0.01) continue;
+                            const tileEdgeAngle = Math.atan2(tEnd.y - tStart.y, tEnd.x - tStart.x);
+                            
+                            let angleBetween = Math.abs(actualEdgeAngle - tileEdgeAngle);
+                            while (angleBetween > Math.PI) angleBetween = 2 * Math.PI - angleBetween;
+                            if (angleBetween > Math.PI / 2) angleBetween = Math.PI - angleBetween;
+                            const angleDeg = angleBetween * 180 / Math.PI;
+                            
+                            if (angleDeg < 0.5 || Math.abs(angleDeg - 90) < 0.5) continue;
+                            
+                            const isDup = drawnAngles.some(da =>
+                                distance(inter, da.pos) < 15 / this.zoom &&
+                                Math.abs(da.angle - angleDeg) < 1
+                            );
+                            if (isDup) continue;
+                            
+                            const teDirX = (tEnd.x - tStart.x) / teLen;
+                            const teDirY = (tEnd.y - tStart.y) / teLen;
+                            const bDirX = (bEnd.x - bStart.x) / bLen;
+                            const bDirY = (bEnd.y - bStart.y) / bLen;
+                            
+                            // We need to pick directions of tile edge and boundary that form
+                            // the acute angle between them. There are 4 combinations of +/- for each.
+                            // Pick the pair where the angle between them equals angleBetween (the acute one).
+                            const teDirs = [
+                                Math.atan2(teDirY, teDirX),
+                                Math.atan2(-teDirY, -teDirX)
+                            ];
+                            const bDirs = [
+                                Math.atan2(bDirY, bDirX),
+                                Math.atan2(-bDirY, -bDirX)
+                            ];
+                            
+                            // Find the combination that gives the acute angle and is on the interior side
+                            let bestTeAngle = teDirs[0], bestBAngle = bDirs[0], bestDiff = 999;
+                            for (const ta of teDirs) {
+                                for (const ba of bDirs) {
+                                    let d = ba - ta;
+                                    while (d > Math.PI) d -= 2 * Math.PI;
+                                    while (d < -Math.PI) d += 2 * Math.PI;
+                                    if (Math.abs(Math.abs(d) - angleBetween) < 0.01 && Math.abs(d) < bestDiff) {
+                                        // Check that the bisector points roughly toward the surface interior
+                                        const bisectAngle = ta + d / 2;
+                                        const testPt = {
+                                            x: inter.x + Math.cos(bisectAngle) * 5,
+                                            y: inter.y + Math.sin(bisectAngle) * 5
+                                        };
+                                        if (this.pointInSurface(testPt, surface)) {
+                                            bestTeAngle = ta;
+                                            bestBAngle = ba;
+                                            bestDiff = Math.abs(d);
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // If no interior-facing combo found, just use the smallest angle
+                            if (bestDiff > Math.PI) {
+                                for (const ta of teDirs) {
+                                    for (const ba of bDirs) {
+                                        let d = ba - ta;
+                                        while (d > Math.PI) d -= 2 * Math.PI;
+                                        while (d < -Math.PI) d += 2 * Math.PI;
+                                        if (Math.abs(d) < bestDiff) {
+                                            bestTeAngle = ta; bestBAngle = ba; bestDiff = Math.abs(d);
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            let arcDiff = bestBAngle - bestTeAngle;
+                            while (arcDiff > Math.PI) arcDiff -= 2 * Math.PI;
+                            while (arcDiff < -Math.PI) arcDiff += 2 * Math.PI;
+                            
+                            // Draw dotted tile-edge reference line
+                            const refLen = 20 / this.zoom;
+                            ctx.save();
+                            ctx.strokeStyle = '#8B6914';
+                            ctx.lineWidth = 1 / this.zoom;
+                            ctx.setLineDash([3 / this.zoom, 3 / this.zoom]);
+                            ctx.beginPath();
+                            ctx.moveTo(inter.x, inter.y);
+                            ctx.lineTo(inter.x + Math.cos(bestTeAngle) * refLen, inter.y + Math.sin(bestTeAngle) * refLen);
+                            ctx.stroke();
+                            ctx.setLineDash([]);
+                            
+                            // Draw arc
+                            const arcRadius = 16 / this.zoom;
+                            ctx.strokeStyle = '#8B6914';
+                            ctx.lineWidth = 1.5 / this.zoom;
+                            ctx.beginPath();
+                            ctx.arc(inter.x, inter.y, arcRadius, bestTeAngle, bestTeAngle + arcDiff, arcDiff < 0);
+                            ctx.stroke();
+                            
+                            // Label at bisector
+                            const bisect = bestTeAngle + arcDiff / 2;
+                            const labelR = arcRadius + 14 / this.zoom;
+                            const lx = inter.x + Math.cos(bisect) * labelR;
+                            const ly = inter.y + Math.sin(bisect) * labelR;
+                            const labelText = angleDeg.toFixed(1) + '\u00B0';
+                            
+                            ctx.translate(lx, ly);
+                            ctx.scale(1 / this.zoom, 1 / this.zoom);
+                            ctx.font = 'bold 10px sans-serif';
+                            const metrics = ctx.measureText(labelText);
+                            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                            ctx.fillRect(-metrics.width / 2 - 2, -9, metrics.width + 4, 15);
+                            ctx.fillStyle = '#8B6914';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            ctx.fillText(labelText, 0, 0);
+                            ctx.restore();
+                            
+                            drawnAngles.push({ pos: inter, angle: angleDeg });
+                        }
+                    }
+                }
+            }
+        }
+
         
         pointInTileBounds(point, corners, tileW, tileH) {
             // Project point onto tile's local axes and check if within bounds

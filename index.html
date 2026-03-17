@@ -2927,7 +2927,18 @@
             if (!isNaN(groutW) && groutW >= 0) this.groutWidthInches = groutW;
             if (!isNaN(offX)) this.offsetXInches = offX;
             if (!isNaN(offY)) this.offsetYInches = offY;
-            this.updateTileInputFields(); // Syncs both sets of fields
+            // Sync finalize offset fields without overwriting the field being edited
+            if (sourceId !== 'finalizeOffsetX' && sourceId !== 'finalizeOffsetY') {
+                const isMetric = this.unitMode === 'metric';
+                const format = (inches) => isMetric ? (inches * CONFIG.MM_PER_INCH).toFixed(1) : inches.toFixed(3);
+                document.getElementById('finalizeOffsetX').value = format(this.offsetXInches);
+                document.getElementById('finalizeOffsetY').value = format(this.offsetYInches);
+            } else {
+                const isMetric = this.unitMode === 'metric';
+                const format = (inches) => isMetric ? (inches * CONFIG.MM_PER_INCH).toFixed(1) : inches.toFixed(3);
+                document.getElementById('offsetX').value = format(this.offsetXInches);
+                document.getElementById('offsetY').value = format(this.offsetYInches);
+            }
             if (this.currentTab === 'finalize') this.updateTileCount();
             this.redraw();
         }

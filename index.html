@@ -599,6 +599,127 @@
             border-color: var(--steel-blue);
         }
         
+        #saveLoadOverlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(46, 52, 64, 0.7);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+            padding: var(--space-md);
+        }
+        
+        #saveLoadDialog {
+            background: var(--white);
+            border-radius: 8px;
+            padding: var(--space-lg);
+            width: 100%;
+            max-width: 600px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        
+        #saveLoadTitle {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--slate-gray);
+            margin-bottom: var(--space-md);
+        }
+        
+        #saveLoadInstructions {
+            font-size: 13px;
+            color: var(--steel-blue);
+            margin-bottom: var(--space-md);
+            line-height: 1.5;
+        }
+        
+        #saveLoadTextarea {
+            width: 100%;
+            flex: 1;
+            min-height: 200px;
+            padding: var(--space-sm);
+            font-family: monospace;
+            font-size: 11px;
+            border: 2px solid var(--electric-blue);
+            border-radius: 4px;
+            margin-bottom: var(--space-sm);
+            resize: vertical;
+            white-space: pre;
+            overflow: auto;
+        }
+        
+        #saveLoadStatus {
+            font-size: 13px;
+            min-height: 18px;
+            margin-bottom: var(--space-sm);
+            color: var(--steel-blue);
+        }
+        
+        #saveLoadStatus.success { color: #2d8659; }
+        #saveLoadStatus.error { color: #c00; }
+        
+        #saveLoadButtons {
+            display: flex;
+            justify-content: flex-end;
+            gap: var(--space-sm);
+            flex-wrap: wrap;
+        }
+        
+        #saveLoadButtons button {
+            width: auto;
+            padding: 10px 20px;
+            margin: 0;
+        }
+        
+        #saveLoadLoad {
+            background: var(--electric-blue);
+            color: var(--white);
+            border-color: var(--electric-blue);
+        }
+        
+        #saveLoadLoad:hover {
+            background: #4f739c;
+        }
+        
+        #printContainer {
+            display: none;
+        }
+        
+        @media print {
+            body > *:not(#printContainer) {
+                display: none !important;
+            }
+            html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background: white !important;
+                width: 100% !important;
+                height: auto !important;
+                overflow: visible !important;
+            }
+            #printContainer {
+                display: block !important;
+                width: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            #printContainer img {
+                display: block;
+                width: 100%;
+                height: auto;
+                max-width: 100%;
+            }
+            @page {
+                margin: 0.5in;
+            }
+        }
+        
         /* Link buttons for Help and Donate */
         .link-buttons {
             display: flex;
@@ -1057,6 +1178,25 @@
         </div>
     </div>
     
+    <div id="printContainer"></div>
+    
+    <div id="saveLoadOverlay">
+        <div id="saveLoadDialog">
+            <div id="saveLoadTitle">Save / Load Design</div>
+            <div id="saveLoadInstructions">
+                <strong>To save:</strong> Copy the text below and paste it somewhere safe (note, email, etc.)<br>
+                <strong>To load:</strong> Paste a previously saved design over the text below, then click Load.
+            </div>
+            <textarea id="saveLoadTextarea" spellcheck="false"></textarea>
+            <div id="saveLoadStatus"></div>
+            <div id="saveLoadButtons">
+                <button id="saveLoadCopy">Copy to Clipboard</button>
+                <button id="saveLoadLoad">Load</button>
+                <button id="saveLoadClose">Close</button>
+            </div>
+        </div>
+    </div>
+    
     <div id="canvasContainer">
         <canvas id="canvas"></canvas>
         <a id="watermark" href="https://sites.google.com/view/jasoncousineausolutions/feb3_2026_tileplannertool" target="_blank">
@@ -1252,9 +1392,17 @@
                     </label>
                 </div>
                 
-                <div class="section-title">Tile Estimate (Beta)</div>
-                <div id="tileCountSummary" class="tile-count-summary">
+                <div class="section-title mobile-hide">Tile Estimate (Beta)</div>
+                <div id="tileCountSummary" class="tile-count-summary mobile-hide">
                     <p class="hint-text">Select surfaces to see tile estimate.</p>
+                </div>
+                <div class="mobile-only-section">
+                    <button id="btnToggleTileEstimate" class="toggle-section-btn">Tile Estimate (Beta) ▼</button>
+                    <div id="tileEstimateCollapsible" class="collapsible-section" style="display: none;">
+                        <div id="tileCountSummaryMobile" class="tile-count-summary">
+                            <p class="hint-text">Select surfaces to see tile estimate.</p>
+                        </div>
+                    </div>
                 </div>
                 
                 <div id="finalizeAlignmentSection" class="mobile-only-section">
@@ -1289,6 +1437,8 @@
         <div id="unitsSection">
             <button id="btnCancel" class="danger hidden">Cancel</button>
             <button id="btnRecenter" style="width: 100%; margin-bottom: 10px;">Re-center View</button>
+            <button id="btnSaveLoad" style="width: 100%; margin-bottom: 10px;">Save / Load Design</button>
+            <button id="btnPrint" style="width: 100%; margin-bottom: 10px;">Print / Save as PDF</button>
             <div id="unitsRow">
                 <div class="section-title units-title-full" style="margin-top: 0;">Display Units</div>
                 <label class="units-label-compact" for="unitMode">Units:</label>
@@ -2001,6 +2151,57 @@
             // Re-center
             document.getElementById('btnRecenter').addEventListener('click', () => this.recenterView());
             
+            // Save/Load dialog
+            document.getElementById('btnSaveLoad').addEventListener('click', () => this.openSaveLoadDialog());
+            document.getElementById('btnPrint').addEventListener('click', () => this.printDesign());
+            document.getElementById('saveLoadClose').addEventListener('click', () => {
+                document.getElementById('saveLoadOverlay').style.display = 'none';
+            });
+            document.getElementById('saveLoadOverlay').addEventListener('click', (e) => {
+                if (e.target.id === 'saveLoadOverlay') {
+                    document.getElementById('saveLoadOverlay').style.display = 'none';
+                }
+            });
+            document.getElementById('saveLoadCopy').addEventListener('click', () => {
+                const textarea = document.getElementById('saveLoadTextarea');
+                const status = document.getElementById('saveLoadStatus');
+                textarea.select();
+                try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(textarea.value).then(() => {
+                            status.textContent = 'Copied to clipboard.';
+                            status.className = 'success';
+                        }).catch(() => {
+                            document.execCommand('copy');
+                            status.textContent = 'Copied to clipboard.';
+                            status.className = 'success';
+                        });
+                    } else {
+                        document.execCommand('copy');
+                        status.textContent = 'Copied to clipboard.';
+                        status.className = 'success';
+                    }
+                } catch (e) {
+                    status.textContent = 'Copy failed. Select all and copy manually.';
+                    status.className = 'error';
+                }
+            });
+            document.getElementById('saveLoadLoad').addEventListener('click', () => {
+                const textarea = document.getElementById('saveLoadTextarea');
+                const status = document.getElementById('saveLoadStatus');
+                const result = this.importDesign(textarea.value);
+                if (result.success) {
+                    status.textContent = 'Design loaded successfully.';
+                    status.className = 'success';
+                    setTimeout(() => {
+                        document.getElementById('saveLoadOverlay').style.display = 'none';
+                    }, 800);
+                } else {
+                    status.textContent = result.error;
+                    status.className = 'error';
+                }
+            });
+            
             // Dropdown buttons and items
             document.querySelectorAll('.combo-dropdown-button').forEach(btn => {
                 btn.addEventListener('click', (e) => {
@@ -2050,6 +2251,17 @@
                 }
             });
             document.getElementById('btnClearSurfaceSelectionMobile').addEventListener('click', () => this.clearSurfaceSelection());
+            document.getElementById('btnToggleTileEstimate').addEventListener('click', () => {
+                const section = document.getElementById('tileEstimateCollapsible');
+                const btn = document.getElementById('btnToggleTileEstimate');
+                if (section.style.display === 'none') {
+                    section.style.display = 'block';
+                    btn.textContent = 'Tile Estimate (Beta) \u25B2';
+                } else {
+                    section.style.display = 'none';
+                    btn.textContent = 'Tile Estimate (Beta) \u25BC';
+                }
+            });
             document.getElementById('showCutMeasurements').addEventListener('change', (e) => {
                 this.showCutMeasurements = e.target.checked;
                 this.redraw();
@@ -2621,8 +2833,11 @@
         
         updateTileCount() {
             const el = document.getElementById('tileCountSummary');
+            const elMobile = document.getElementById('tileCountSummaryMobile');
             if (this.selectedSurfaces.length === 0) {
-                el.innerHTML = '<p class="hint-text">Select surfaces to see tile estimate.</p>';
+                const emptyMsg = '<p class="hint-text">Select surfaces to see tile estimate.</p>';
+                el.innerHTML = emptyMsg;
+                elMobile.innerHTML = emptyMsg;
                 return;
             }
             
@@ -2773,12 +2988,33 @@
             const totalPartialTiles = widthTilesNeeded + heightTilesNeeded + diagonalCuts;
             const totalTiles = fullTiles + totalPartialTiles;
             
-            el.innerHTML =
+            // Compute total surface area across selected surfaces
+            let totalAreaSqIn = 0;
+            for (const surfaceIdx of this.selectedSurfaces) {
+                const surface = this.detectedSurfaces[surfaceIdx];
+                if (surface) totalAreaSqIn += this.computeSurfaceArea(surface);
+            }
+            const isMetric = this.unitMode === 'metric';
+            let areaStr;
+            if (isMetric) {
+                // square inches to square meters: 1 sq in = 0.00064516 sq m
+                const sqM = totalAreaSqIn * 0.00064516;
+                areaStr = sqM.toFixed(2) + ' m\u00B2';
+            } else {
+                // square inches to square feet
+                const sqFt = totalAreaSqIn / 144;
+                areaStr = sqFt.toFixed(2) + ' ft\u00B2';
+            }
+            
+            const html =
+                '<div class="count-row"><span class="count-label">Surface area:</span><span class="count-value">' + areaStr + '</span></div>' +
                 '<div class="count-row"><span class="count-label">Full tiles (no cuts):</span><span class="count-value">' + fullTiles + '</span></div>' +
                 '<div class="count-row"><span class="count-label">Width cuts (paired):</span><span class="count-value">' + widthCuts.length + ' cuts \u2192 ' + widthTilesNeeded + ' tiles</span></div>' +
                 '<div class="count-row"><span class="count-label">Height cuts (paired):</span><span class="count-value">' + heightCuts.length + ' cuts \u2192 ' + heightTilesNeeded + ' tiles</span></div>' +
                 (diagonalCuts > 0 ? '<div class="count-row"><span class="count-label">Diagonal/complex cuts:</span><span class="count-value">' + diagonalCuts + ' tiles</span></div>' : '') +
                 '<div class="count-row count-total"><span class="count-label">Estimated tiles to buy:</span><span class="count-value">' + totalTiles + '</span></div>';
+            el.innerHTML = html;
+            elMobile.innerHTML = html;
         }
 
         toggleSurfaceSelection(idx) {
@@ -2825,6 +3061,28 @@
         }
 
         getSurfaceOuterBoundary(surface) { return surface.holes ? surface.outer : surface; }
+        
+        computeSurfaceArea(surface) {
+            // Returns area in square inches. Uses shoelace formula. Subtracts holes.
+            const polygonArea = (vertexIndices) => {
+                let area = 0;
+                const n = vertexIndices.length;
+                for (let i = 0; i < n; i++) {
+                    const p1 = this.vertices[vertexIndices[i]];
+                    const p2 = this.vertices[vertexIndices[(i + 1) % n]];
+                    area += (p1.x * p2.y - p2.x * p1.y);
+                }
+                return Math.abs(area) / 2;
+            };
+            const outerBoundary = this.getSurfaceOuterBoundary(surface);
+            let areaPx = polygonArea(outerBoundary);
+            if (surface.holes) {
+                for (const hole of surface.holes) areaPx -= polygonArea(hole);
+            }
+            // Convert from pixel² to inch²
+            const pxPerInch = CONFIG.PIXELS_PER_INCH;
+            return areaPx / (pxPerInch * pxPerInch);
+        }
 
         findSurfaceAt(point) {
             for (let i = this.detectedSurfaces.length - 1; i >= 0; i--) {
@@ -2995,6 +3253,164 @@
             this.updateCancelButton();
             this.updateDeleteButton();
             this.redraw();
+        }
+        
+        exportDesign() {
+            const data = {
+                format: 'tile-planner-design',
+                version: '1.1',
+                exportedAt: new Date().toISOString(),
+                appState: {
+                    appVersion: '1.1',
+                    unitMode: this.unitMode,
+                    snapMode: this.snapMode,
+                    distanceToolEnabled: this.distanceToolEnabled,
+                    currentTab: this.currentTab,
+                    zoom: this.zoom,
+                    panX: this.panX,
+                    panY: this.panY
+                },
+                tileLayout: {
+                    tileWidthInches: this.tileWidthInches,
+                    tileHeightInches: this.tileHeightInches,
+                    groutWidthInches: this.groutWidthInches,
+                    bondOffset: this.bondOffset,
+                    rotationDegrees: this.rotationDegrees,
+                    offsetXInches: this.offsetXInches,
+                    offsetYInches: this.offsetYInches
+                },
+                surface: {
+                    vertices: this.vertices.map(v => ({ x: v.x, y: v.y })),
+                    lines: this.lines.map(l => [l[0], l[1]])
+                }
+            };
+            return JSON.stringify(data, null, 2);
+        }
+        
+        importDesign(jsonText) {
+            let data;
+            try {
+                data = JSON.parse(jsonText);
+            } catch (e) {
+                return { success: false, error: 'Invalid JSON: ' + e.message };
+            }
+            
+            if (!data || data.format !== 'tile-planner-design') {
+                return { success: false, error: 'Not a valid tile planner design file.' };
+            }
+            
+            if (!data.surface || !Array.isArray(data.surface.vertices) || !Array.isArray(data.surface.lines)) {
+                return { success: false, error: 'Missing or invalid surface data.' };
+            }
+            
+            try {
+                // Validate vertices
+                for (const v of data.surface.vertices) {
+                    if (typeof v.x !== 'number' || typeof v.y !== 'number') {
+                        throw new Error('Invalid vertex data');
+                    }
+                }
+                // Validate lines
+                for (const l of data.surface.lines) {
+                    if (!Array.isArray(l) || l.length !== 2 || typeof l[0] !== 'number' || typeof l[1] !== 'number') {
+                        throw new Error('Invalid line data');
+                    }
+                    if (l[0] < 0 || l[0] >= data.surface.vertices.length || l[1] < 0 || l[1] >= data.surface.vertices.length) {
+                        throw new Error('Line references missing vertex');
+                    }
+                }
+                
+                // Apply surface
+                this.vertices = data.surface.vertices.map(v => ({ x: v.x, y: v.y }));
+                this.lines = data.surface.lines.map(l => [l[0], l[1]]);
+                
+                // Apply tile layout
+                if (data.tileLayout) {
+                    const tl = data.tileLayout;
+                    if (typeof tl.tileWidthInches === 'number' && tl.tileWidthInches > 0) this.tileWidthInches = tl.tileWidthInches;
+                    if (typeof tl.tileHeightInches === 'number' && tl.tileHeightInches > 0) this.tileHeightInches = tl.tileHeightInches;
+                    if (typeof tl.groutWidthInches === 'number' && tl.groutWidthInches >= 0) this.groutWidthInches = tl.groutWidthInches;
+                    if (typeof tl.bondOffset === 'number') this.bondOffset = tl.bondOffset;
+                    if (typeof tl.rotationDegrees === 'number') this.rotationDegrees = tl.rotationDegrees;
+                    if (typeof tl.offsetXInches === 'number') this.offsetXInches = tl.offsetXInches;
+                    if (typeof tl.offsetYInches === 'number') this.offsetYInches = tl.offsetYInches;
+                }
+                
+                // Apply app state
+                if (data.appState) {
+                    const as = data.appState;
+                    if (typeof as.unitMode === 'string') this.unitMode = as.unitMode;
+                    if (typeof as.snapMode === 'string') this.snapMode = as.snapMode;
+                    if (typeof as.distanceToolEnabled === 'boolean') this.distanceToolEnabled = as.distanceToolEnabled;
+                    if (typeof as.zoom === 'number' && as.zoom > 0) this.zoom = as.zoom;
+                    if (typeof as.panX === 'number') this.panX = as.panX;
+                    if (typeof as.panY === 'number') this.panY = as.panY;
+                }
+                
+                // Reset selection state
+                this.clearSelection();
+                this.firstVertex = null;
+                this.detectedSurfaces = [];
+                this.selectedSurfaces = [];
+                this.hoverSurface = null;
+                
+                // Sync UI
+                this.updateTileInputFields();
+                document.getElementById('unitMode').value = this.unitMode;
+                document.getElementById('snapMode').value = this.snapMode;
+                document.getElementById('distanceTool').checked = this.distanceToolEnabled;
+                document.getElementById('bondOffset').value = this.bondOffset;
+                document.getElementById('rotation').value = this.rotationDegrees;
+                
+                this.updateSurfaceList();
+                this.updateFinalizeButtons();
+                this.updateCancelButton();
+                this.updateDeleteButton();
+                
+                // If on finalize tab, re-detect surfaces
+                if (this.currentTab === 'finalize') this.detectSurfaces();
+                
+                this.redraw();
+                
+                return { success: true };
+            } catch (e) {
+                return { success: false, error: 'Failed to apply design: ' + e.message };
+            }
+        }
+        
+        openSaveLoadDialog() {
+            const overlay = document.getElementById('saveLoadOverlay');
+            const textarea = document.getElementById('saveLoadTextarea');
+            const status = document.getElementById('saveLoadStatus');
+            textarea.value = this.exportDesign();
+            status.textContent = '';
+            status.className = '';
+            overlay.style.display = 'flex';
+            // Don't auto-focus textarea on mobile to avoid keyboard popup
+        }
+        
+        printDesign() {
+            try {
+                const dataUrl = this.canvas.toDataURL('image/png');
+                const container = document.getElementById('printContainer');
+                container.innerHTML = '';
+                const img = document.createElement('img');
+                img.alt = 'Tile Layout';
+                img.style.width = '100%';
+                img.onload = () => {
+                    setTimeout(() => {
+                        window.print();
+                        setTimeout(() => { container.innerHTML = ''; }, 1000);
+                    }, 100);
+                };
+                img.onerror = () => {
+                    alert('Failed to generate print image.');
+                };
+                container.appendChild(img);
+                img.src = dataUrl;
+            } catch (e) {
+                alert('Unable to print: ' + e.message);
+            }
         }
 
         // --------------------------------------------------------

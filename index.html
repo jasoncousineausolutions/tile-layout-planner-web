@@ -1286,7 +1286,7 @@
     <div id="canvasContainer">
         <canvas id="canvas"></canvas>
         <a id="watermark" href="https://sites.google.com/view/jasoncousineausolutions/feb3_2026_tileplannertool" target="_blank">
-            <span>Tile Planner V1.20</span>
+            <span>Tile Planner V1.25</span>
             <span>Jason Cousineau Solutions Inc.</span>
         </a>
         <div id="floatingActions">
@@ -1362,6 +1362,36 @@
                             <div class="combo-dropdown-item" data-value="0.5">1/2"</div>
                         </div>
                     </div>
+                </div>
+                
+                <button id="btnToggleGrout" class="toggle-section-btn" style="margin-top: var(--space-sm);">Grout Estimation ▼</button>
+                <div id="groutCollapsible" class="collapsible-section" style="display: none;">
+                    <div class="input-group">
+                        <label id="labelTileDepth">Tile Depth:</label>
+                        <div class="combo-input-wrapper">
+                            <input type="text" id="tileDepth" value="0.5" inputmode="decimal">
+                            <button class="combo-dropdown-button" data-dropdown="tileDepth">▼</button>
+                            <div class="combo-dropdown-menu" id="tileDepthDropdownMenu">
+                                <div class="combo-dropdown-item" data-value="0.1875">3/16"</div>
+                                <div class="combo-dropdown-item" data-value="0.25">1/4"</div>
+                                <div class="combo-dropdown-item" data-value="0.375">3/8"</div>
+                                <div class="combo-dropdown-item" data-value="0.5">1/2"</div>
+                                <div class="combo-dropdown-item" data-value="0.625">5/8"</div>
+                                <div class="combo-dropdown-item" data-value="0.75">3/4"</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label>Grout Type:</label>
+                        <select id="groutType">
+                            <option value="unknown" selected>-- Select --</option>
+                            <option value="sanded">Sanded</option>
+                            <option value="unsanded">Unsanded</option>
+                            <option value="epoxy">Epoxy</option>
+                            <option value="acrylic">Acrylic (pre-mixed)</option>
+                        </select>
+                    </div>
+                    <p class="hint-text" id="groutHint">Select a grout type to see estimation in the Finalize tab.</p>
                 </div>
                 
                 <div class="info-box">
@@ -2005,6 +2035,8 @@
             this.tileWidthInches = 24.0;
             this.tileHeightInches = 12.0;
             this.groutWidthInches = 0.0;
+            this.tileDepthInches = 0.5;
+            this.groutType = 'unknown';
             this.bondOffset = 0.0;
             this.rotationDegrees = 0;
             this.offsetXInches = 0.0;
@@ -2347,6 +2379,48 @@
             document.getElementById('btnSelectAll').addEventListener('click', () => this.selectAllSurfaces());
             
             // Mobile selection toggle and buttons
+            // Grout estimation section toggle
+            document.getElementById('btnToggleGrout').addEventListener('click', () => {
+                const section = document.getElementById('groutCollapsible');
+                const btn = document.getElementById('btnToggleGrout');
+                if (section.style.display === 'none') {
+                    section.style.display = 'block';
+                    btn.textContent = 'Grout Estimation \u25B2';
+                } else {
+                    section.style.display = 'none';
+                    btn.textContent = 'Grout Estimation \u25BC';
+                }
+            });
+            document.getElementById('tileDepth').addEventListener('input', () => {
+                const val = parseUserInput(document.getElementById('tileDepth').value, this.unitMode);
+                if (!isNaN(val) && val > 0) this.tileDepthInches = val;
+                if (this.currentTab === 'finalize') this.updateTileCount();
+            });
+            document.getElementById('groutType').addEventListener('change', (e) => {
+                this.groutType = e.target.value;
+                const hint = document.getElementById('groutHint');
+                if (this.groutType === 'unknown') {
+                    hint.textContent = 'Select a grout type to see estimation in the Finalize tab.';
+                } else {
+                    hint.textContent = 'Grout estimate will appear in the Tile Estimate on the Finalize tab.';
+                }
+                if (this.currentTab === 'finalize') this.updateTileCount();
+            });
+            // Tile depth dropdown
+            document.querySelectorAll('#tileDepthDropdownMenu .combo-dropdown-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const val = parseFloat(item.dataset.value);
+                    document.getElementById('tileDepth').value = this.unitMode === 'metric' ? (val * CONFIG.MM_PER_INCH).toFixed(1) : val;
+                    this.tileDepthInches = val;
+                    document.getElementById('tileDepthDropdownMenu').style.display = 'none';
+                    if (this.currentTab === 'finalize') this.updateTileCount();
+                });
+            });
+            document.querySelector('[data-dropdown="tileDepth"]').addEventListener('click', () => {
+                const menu = document.getElementById('tileDepthDropdownMenu');
+                menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+            });
+            
             document.getElementById('btnToggleSelection').addEventListener('click', () => {
                 const section = document.getElementById('selectionCollapsible');
                 const btn = document.getElementById('btnToggleSelection');
@@ -2818,6 +2892,10 @@
                 const areaB = b.holes ? Math.abs(this.calculateSignedArea(b.outer)) : Math.abs(this.calculateSignedArea(b));
                 return areaB - areaA;
             });
+            // Auto-select if there's exactly one surface (convenience, avoids stale-selection bugs)
+            if (this.detectedSurfaces.length === 1) {
+                this.selectedSurfaces = [0];
+            }
             this.updateSurfaceList();
             this.updateFinalizeButtons();
             this.redraw();
@@ -3114,13 +3192,62 @@
                 areaStr = sqFt.toFixed(2) + ' ft\u00B2';
             }
             
+            // Grout estimation
+            let groutHtml = '';
+            if (this.groutType !== 'unknown' && this.groutWidthInches > 0) {
+                // TCNA formula: joint volume in cubic inches
+                const tileW = this.tileWidthInches;
+                const tileH = this.tileHeightInches;
+                const jointW = this.groutWidthInches;
+                const tileDepth = this.tileDepthInches;
+                
+                // Volume of grout joints in cubic inches
+                const groutVolCuIn = ((tileW + tileH) / (tileW * tileH)) * jointW * tileDepth * totalAreaSqIn;
+                const groutVolWithWaste = groutVolCuIn * 1.10; // 10% waste
+                
+                const typeLabel = this.groutType.charAt(0).toUpperCase() + this.groutType.slice(1);
+                
+                if (this.groutType === 'acrylic') {
+                    // Acrylic/pre-mixed grout is sold by volume (gallons)
+                    // 1 US gallon = 231 cubic inches
+                    const gallons = groutVolWithWaste / 231;
+                    if (isMetric) {
+                        const liters = gallons * 3.785;
+                        groutHtml =
+                            '<div class="count-row" style="margin-top:4px;border-top:1px solid #D8DEE9;padding-top:4px;"><span class="count-label">Grout (Acrylic):</span><span class="count-value">' + liters.toFixed(2) + ' L</span></div>';
+                    } else {
+                        groutHtml =
+                            '<div class="count-row" style="margin-top:4px;border-top:1px solid #D8DEE9;padding-top:4px;"><span class="count-label">Grout (Acrylic):</span><span class="count-value">' + gallons.toFixed(2) + ' gal</span></div>';
+                    }
+                } else {
+                    // Cement/epoxy grout is sold by weight (lbs)
+                    const densities = { sanded: 0.1875, unsanded: 0.165, epoxy: 0.22 };
+                    const density = densities[this.groutType] || 0.1875;
+                    const groutLbs = groutVolCuIn * density;
+                    const groutWithWaste = groutLbs * 1.10; // 10% waste
+                    
+                    if (isMetric) {
+                        const groutKg = groutWithWaste * 0.4536;
+                        groutHtml =
+                            '<div class="count-row" style="margin-top:4px;border-top:1px solid #D8DEE9;padding-top:4px;"><span class="count-label">Grout (' + typeLabel + '):</span><span class="count-value">' + groutKg.toFixed(1) + ' kg</span></div>';
+                    } else {
+                        groutHtml =
+                            '<div class="count-row" style="margin-top:4px;border-top:1px solid #D8DEE9;padding-top:4px;"><span class="count-label">Grout (' + typeLabel + '):</span><span class="count-value">' + groutWithWaste.toFixed(1) + ' lbs</span></div>';
+                    }
+                }
+            } else if (this.groutType !== 'unknown' && this.groutWidthInches <= 0) {
+                // Grout type selected but no width set
+                groutHtml = '<div class="count-row" style="margin-top:4px;border-top:1px solid #D8DEE9;padding-top:4px;"><span class="count-label" style="font-style:italic;">Set a Grout Width &gt; 0 for grout estimate</span></div>';
+            }
+            
             const html =
                 '<div class="count-row"><span class="count-label">Surface area:</span><span class="count-value">' + areaStr + '</span></div>' +
                 '<div class="count-row"><span class="count-label">Full tiles (no cuts):</span><span class="count-value">' + fullTiles + '</span></div>' +
                 '<div class="count-row"><span class="count-label">Width cuts (paired):</span><span class="count-value">' + widthCuts.length + ' cuts \u2192 ' + widthTilesNeeded + ' tiles</span></div>' +
                 '<div class="count-row"><span class="count-label">Height cuts (paired):</span><span class="count-value">' + heightCuts.length + ' cuts \u2192 ' + heightTilesNeeded + ' tiles</span></div>' +
                 (diagonalCuts > 0 ? '<div class="count-row"><span class="count-label">Diagonal/complex cuts:</span><span class="count-value">' + diagonalCuts + ' tiles</span></div>' : '') +
-                '<div class="count-row count-total"><span class="count-label">Estimated tiles to buy:</span><span class="count-value">' + totalTiles + '</span></div>';
+                '<div class="count-row count-total"><span class="count-label">Estimated tiles to buy:</span><span class="count-value">' + totalTiles + '</span></div>' +
+                groutHtml;
             el.innerHTML = html;
             elMobile.innerHTML = html;
         }
@@ -3382,6 +3509,8 @@
                     tileWidthInches: this.tileWidthInches,
                     tileHeightInches: this.tileHeightInches,
                     groutWidthInches: this.groutWidthInches,
+                    tileDepthInches: this.tileDepthInches,
+                    groutType: this.groutType,
                     bondOffset: this.bondOffset,
                     rotationDegrees: this.rotationDegrees,
                     offsetXInches: this.offsetXInches,
@@ -3449,6 +3578,8 @@
                     if (typeof tl.tileWidthInches === 'number' && tl.tileWidthInches > 0) this.tileWidthInches = tl.tileWidthInches;
                     if (typeof tl.tileHeightInches === 'number' && tl.tileHeightInches > 0) this.tileHeightInches = tl.tileHeightInches;
                     if (typeof tl.groutWidthInches === 'number' && tl.groutWidthInches >= 0) this.groutWidthInches = tl.groutWidthInches;
+                    if (typeof tl.tileDepthInches === 'number' && tl.tileDepthInches > 0) this.tileDepthInches = tl.tileDepthInches;
+                    if (typeof tl.groutType === 'string') this.groutType = tl.groutType;
                     if (typeof tl.bondOffset === 'number') this.bondOffset = tl.bondOffset;
                     if (typeof tl.rotationDegrees === 'number') this.rotationDegrees = tl.rotationDegrees;
                     if (typeof tl.offsetXInches === 'number') this.offsetXInches = tl.offsetXInches;
@@ -3468,6 +3599,9 @@
                 document.getElementById('distanceTool').checked = this.distanceToolEnabled;
                 document.getElementById('bondOffset').value = this.bondOffset;
                 document.getElementById('rotation').value = this.rotationDegrees;
+                document.getElementById('groutType').value = this.groutType;
+                const isMetricImport = this.unitMode === 'metric';
+                document.getElementById('tileDepth').value = isMetricImport ? (this.tileDepthInches * CONFIG.MM_PER_INCH).toFixed(1) : this.tileDepthInches;
                 this.updateFieldLabels();
                 this.updateTileInputFields();
                 
@@ -4252,7 +4386,7 @@
             ctx.textAlign = 'right';
             ctx.textBaseline = 'bottom';
             ctx.font = '500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-            ctx.fillText('Tile Planner V1.20', w - 14, h - 22);
+            ctx.fillText('Tile Planner V1.25', w - 14, h - 22);
             ctx.font = '500 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
             ctx.fillText('Jason Cousineau Solutions Inc.', w - 14, h - 8);
             ctx.restore();

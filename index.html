@@ -3945,7 +3945,10 @@
                 try { raw = await response.json(); } catch (e) { /* not JSON, e.g. an error page */ }
                 if (!response.ok) {
                     // 404/405 with no JSON means the service is not deployed (or not reachable) yet.
-                    throw Object.assign(new Error(), { sketchCode: (raw && raw.code) || (response.status === 404 || response.status === 405 ? 'unavailable' : 'failed') });
+                    throw Object.assign(new Error(), {
+                        sketchCode: (raw && raw.code) || (response.status === 404 || response.status === 405 ? 'unavailable' : 'failed'),
+                        sketchDetail: (raw && typeof raw.detail === 'string' && raw.detail) || ('http ' + response.status)
+                    });
                 }
                 const data = this.validateSketchResult(raw);
                 if (!data) throw Object.assign(new Error(), { sketchCode: 'no_outline' });
@@ -3971,7 +3974,10 @@
                 document.getElementById('sketchLoad').style.display = '';
             } catch (e) {
                 let message;
-                if (e.sketchCode) message = this.sketchErrorMessage(e.sketchCode);
+                if (e.sketchCode) {
+                    message = this.sketchErrorMessage(e.sketchCode);
+                    if (e.sketchDetail && ['failed', 'unavailable', 'quota', 'disabled'].includes(e.sketchCode)) message += ' (Details: ' + e.sketchDetail + ')';
+                }
                 else if (e.name === 'AbortError') message = 'That took too long. Please try again.';
                 else if (e.name === 'TypeError') message = 'Could not reach the sketch reader. Check your internet connection, or draw your surface by hand.';
                 else message = this.sketchErrorMessage('failed');

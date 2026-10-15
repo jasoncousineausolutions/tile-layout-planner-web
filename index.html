@@ -687,6 +687,123 @@
             background: #4f739c;
         }
         
+        #sketchOverlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(46, 52, 64, 0.7);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+            padding: var(--space-md);
+        }
+        
+        #sketchDialog {
+            background: var(--white);
+            border-radius: 8px;
+            padding: var(--space-lg);
+            width: 100%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        
+        #sketchTitle {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--slate-gray);
+            margin-bottom: var(--space-sm);
+        }
+        
+        #sketchInstructions {
+            font-size: 13px;
+            color: var(--steel-blue);
+            margin-bottom: var(--space-md);
+            line-height: 1.5;
+        }
+        
+        #sketchFile {
+            width: 100%;
+            font-size: 14px;
+            margin-bottom: var(--space-sm);
+        }
+        
+        #sketchPreview {
+            display: none;
+            max-width: 100%;
+            max-height: 180px;
+            margin: 0 auto var(--space-sm);
+            border: 1px solid var(--electric-blue);
+            border-radius: 4px;
+        }
+        
+        #sketchNotesLabel {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--slate-gray);
+            margin-bottom: 4px;
+        }
+        
+        #sketchNotes {
+            width: 100%;
+            min-height: 70px;
+            padding: var(--space-sm);
+            font-family: inherit;
+            font-size: 14px;
+            border: 2px solid var(--electric-blue);
+            border-radius: 4px;
+            margin-bottom: var(--space-sm);
+            resize: vertical;
+        }
+        
+        #sketchStatus {
+            font-size: 13px;
+            min-height: 18px;
+            margin-bottom: var(--space-sm);
+            color: var(--steel-blue);
+        }
+        
+        #sketchStatus.success { color: #2d8659; }
+        #sketchStatus.error { color: #c00; }
+        
+        #sketchWarnings {
+            display: none;
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--slate-gray);
+            background: #fff7e0;
+            border: 1px solid #e0c060;
+            border-radius: 4px;
+            padding: var(--space-sm) var(--space-md);
+            margin-bottom: var(--space-sm);
+        }
+        
+        #sketchWarnings ul { margin: 4px 0 0 18px; padding: 0; }
+        
+        #sketchButtons {
+            display: flex;
+            justify-content: flex-end;
+            gap: var(--space-sm);
+            flex-wrap: wrap;
+        }
+        
+        #sketchButtons button {
+            width: auto;
+            padding: 10px 20px;
+            margin: 0;
+        }
+        
+        #sketchConvert, #sketchLoad {
+            background: var(--electric-blue);
+            color: var(--white);
+            border-color: var(--electric-blue);
+        }
+        
+        #sketchConvert:hover, #sketchLoad:hover { background: #4f739c; }
+        #sketchConvert:disabled { opacity: 0.6; cursor: default; }
+        
         #printContainer {
             display: none;
         }
@@ -1266,6 +1383,27 @@
         </div>
     </div>
     
+    <div id="sketchOverlay">
+        <div id="sketchDialog">
+            <div id="sketchTitle">Import from Sketch</div>
+            <div id="sketchInstructions">
+                Take or choose a photo of a sketch with the dimensions written on it. The AI reads the outline and loads it into the planner.
+                Straight-on, well-lit photos work best. <strong>Always check the measurements afterwards</strong>, because the AI can misread them.
+            </div>
+            <input type="file" id="sketchFile" accept="image/*">
+            <img id="sketchPreview" alt="Sketch preview">
+            <label id="sketchNotesLabel" for="sketchNotes">Hints (optional)</label>
+            <textarea id="sketchNotes" maxlength="1000" placeholder="Examples: The island is 5 ft from the left wall and 2 ft from the bottom. The wall on the right is 8 ft 3 in, not 8 ft 8 in."></textarea>
+            <div id="sketchStatus"></div>
+            <div id="sketchWarnings"></div>
+            <div id="sketchButtons">
+                <button id="sketchConvert">Convert</button>
+                <button id="sketchLoad" style="display:none;">Load into Planner</button>
+                <button id="sketchClose">Close</button>
+            </div>
+        </div>
+    </div>
+    
     <div id="saveLoadOverlay">
         <div id="saveLoadDialog">
             <div id="saveLoadTitle">Save / Load Design</div>
@@ -1544,6 +1682,7 @@
             
             <div id="mobileLinks" class="mobile-links-footer">
                 <button id="btnRecenterMobile" style="width: 100%; margin-bottom: 8px;">Re-center View</button>
+                <button id="btnSketchMobile" style="width: 100%; margin-bottom: 8px;">Import from Sketch (AI)</button>
                 <button id="btnSaveLoadMobile" style="width: 100%; margin-bottom: 8px;">Save / Load Design</button>
                 <button id="btnPrintMobile" style="width: 100%; margin-bottom: 8px;">Save as Image</button>
                 <div class="link-buttons">
@@ -1556,6 +1695,7 @@
         <div id="unitsSection">
             <button id="btnCancel" class="danger hidden">Cancel</button>
             <button id="btnRecenter" style="width: 100%; margin-bottom: 10px;">Re-center View</button>
+            <button id="btnSketch" style="width: 100%; margin-bottom: 10px;">Import from Sketch (AI)</button>
             <button id="btnSaveLoad" style="width: 100%; margin-bottom: 10px;">Save / Load Design</button>
             <button id="btnPrint" style="width: 100%; margin-bottom: 10px;">Print / Save as PDF</button>
             <div id="unitsRow">
@@ -1587,6 +1727,8 @@
     const CONFIG = {
         // Display
         PIXELS_PER_INCH: 10.8,
+        SKETCH_API_URL: 'https://www.jasoncousineau.com/api/sketch',
+        SKETCH_IMAGE_MAX_PX: 1600,
         HANDLE_SIZE: 6,
         
         // Snap mode presets (in screen pixels)
@@ -2276,6 +2418,17 @@
             // Save/Load dialog
             document.getElementById('btnSaveLoad').addEventListener('click', () => this.openSaveLoadDialog());
             document.getElementById('btnSaveLoadMobile').addEventListener('click', () => this.openSaveLoadDialog());
+            document.getElementById('btnSketch').addEventListener('click', () => this.openSketchDialog());
+            document.getElementById('btnSketchMobile').addEventListener('click', () => this.openSketchDialog());
+            document.getElementById('sketchClose').addEventListener('click', () => {
+                document.getElementById('sketchOverlay').style.display = 'none';
+            });
+            document.getElementById('sketchOverlay').addEventListener('click', (e) => {
+                if (e.target.id === 'sketchOverlay') document.getElementById('sketchOverlay').style.display = 'none';
+            });
+            document.getElementById('sketchFile').addEventListener('change', (e) => this.onSketchFileChosen(e.target.files && e.target.files[0]));
+            document.getElementById('sketchConvert').addEventListener('click', () => this.convertSketch());
+            document.getElementById('sketchLoad').addEventListener('click', () => this.loadSketchResult());
             document.getElementById('btnPrint').addEventListener('click', () => this.printDesign());
             document.getElementById('btnPrintMobile').addEventListener('click', () => this.saveAsImage());
             
@@ -3621,6 +3774,181 @@
             }
         }
         
+        // --------------------------------------------------------
+        // SKETCH IMPORT (photo -> AI -> outlines in inches -> planner)
+        // --------------------------------------------------------
+
+        setSketchStatus(text, kind) {
+            const el = document.getElementById('sketchStatus');
+            el.textContent = text || '';
+            el.className = kind || '';
+        }
+
+        openSketchDialog() {
+            // The photo and hints are kept between openings, so a wrong result can be retried with more hints.
+            this.sketchResult = null;
+            document.getElementById('sketchLoad').style.display = 'none';
+            document.getElementById('sketchWarnings').style.display = 'none';
+            this.setSketchStatus('', '');
+            document.getElementById('sketchConvert').disabled = false;
+            const preview = document.getElementById('sketchPreview');
+            if (this.sketchImage) {
+                preview.src = this.sketchImage.dataUrl;
+                preview.style.display = 'block';
+            } else {
+                preview.style.display = 'none';
+            }
+            document.getElementById('sketchOverlay').style.display = 'flex';
+        }
+
+        async onSketchFileChosen(file) {
+            this.sketchResult = null;
+            document.getElementById('sketchLoad').style.display = 'none';
+            document.getElementById('sketchWarnings').style.display = 'none';
+            if (!file) return;
+            this.setSketchStatus('Reading photo...', '');
+            try {
+                this.sketchImage = await this.prepareSketchImage(file);
+                const preview = document.getElementById('sketchPreview');
+                preview.src = this.sketchImage.dataUrl;
+                preview.style.display = 'block';
+                this.setSketchStatus('', '');
+            } catch (e) {
+                this.sketchImage = null;
+                document.getElementById('sketchPreview').style.display = 'none';
+                this.setSketchStatus(e.message || 'Could not read that image.', 'error');
+            }
+        }
+
+        // Shrinks the photo (long side <= SKETCH_IMAGE_MAX_PX) and re-encodes it as JPEG so uploads stay small and fast.
+        prepareSketchImage(file) {
+            return new Promise((resolve, reject) => {
+                const url = URL.createObjectURL(file);
+                const img = new Image();
+                img.onload = () => {
+                    try {
+                        const longSide = Math.max(img.naturalWidth, img.naturalHeight);
+                        const scale = Math.min(1, CONFIG.SKETCH_IMAGE_MAX_PX / longSide);
+                        const c = document.createElement('canvas');
+                        c.width = Math.max(1, Math.round(img.naturalWidth * scale));
+                        c.height = Math.max(1, Math.round(img.naturalHeight * scale));
+                        const cctx = c.getContext('2d');
+                        cctx.fillStyle = '#ffffff';
+                        cctx.fillRect(0, 0, c.width, c.height);
+                        cctx.drawImage(img, 0, 0, c.width, c.height);
+                        const dataUrl = c.toDataURL('image/jpeg', 0.85);
+                        resolve({ dataUrl, base64: dataUrl.split(',')[1], mimeType: 'image/jpeg' });
+                    } catch (e) {
+                        reject(new Error('Could not read that image.'));
+                    } finally {
+                        URL.revokeObjectURL(url);
+                    }
+                };
+                img.onerror = () => {
+                    URL.revokeObjectURL(url);
+                    reject(new Error('Could not read that image. Try a JPEG or PNG photo.'));
+                };
+                img.src = url;
+            });
+        }
+
+        async convertSketch() {
+            if (!this.sketchImage) {
+                this.setSketchStatus('Choose or take a photo of your sketch first.', 'error');
+                return;
+            }
+            const convertBtn = document.getElementById('sketchConvert');
+            const notes = document.getElementById('sketchNotes').value.trim();
+            this.sketchResult = null;
+            document.getElementById('sketchLoad').style.display = 'none';
+            document.getElementById('sketchWarnings').style.display = 'none';
+            convertBtn.disabled = true;
+            this.setSketchStatus('Reading your sketch... this can take up to a minute.', '');
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 65000);
+            try {
+                const response = await fetch(CONFIG.SKETCH_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: this.sketchImage.base64, mimeType: this.sketchImage.mimeType, notes }),
+                    signal: controller.signal
+                });
+                let data = null;
+                try { data = await response.json(); } catch (e) { /* non-JSON error page */ }
+                if (!response.ok || !data || !Array.isArray(data.shapes)) {
+                    throw new Error((data && data.error) || 'The sketch reader had a problem. Please try again.');
+                }
+                this.sketchResult = data;
+                const outlines = data.shapes.length;
+                this.setSketchStatus('Found ' + outlines + ' outline' + (outlines === 1 ? '' : 's') +
+                    '. Check the notes below, then load it into the planner.', 'success');
+                const warningsEl = document.getElementById('sketchWarnings');
+                warningsEl.textContent = '';
+                if (data.warnings && data.warnings.length) {
+                    const title = document.createElement('strong');
+                    title.textContent = 'The AI wants you to check:';
+                    const list = document.createElement('ul');
+                    data.warnings.forEach(w => {
+                        const li = document.createElement('li');
+                        li.textContent = w;
+                        list.appendChild(li);
+                    });
+                    warningsEl.appendChild(title);
+                    warningsEl.appendChild(list);
+                    warningsEl.style.display = 'block';
+                }
+                document.getElementById('sketchLoad').style.display = '';
+            } catch (e) {
+                const offline = e.name === 'TypeError';
+                this.setSketchStatus(e.name === 'AbortError'
+                    ? 'That took too long. Please try again.'
+                    : (offline ? 'Could not reach the sketch reader. Check your internet connection.' : e.message), 'error');
+            } finally {
+                clearTimeout(timer);
+                convertBtn.disabled = false;
+            }
+        }
+
+        loadSketchResult() {
+            const result = this.sketchResult;
+            if (!result) return;
+            if (this.vertices.length > 0 &&
+                !confirm('This replaces the surface you have drawn now. Load the sketch anyway?')) return;
+
+            const scale = CONFIG.PIXELS_PER_INCH;
+            const vertices = [];
+            const lines = [];
+            // Outer outline first, then cutouts; each is a closed loop of lines.
+            const ordered = result.shapes.filter(s => s.role === 'outer').concat(result.shapes.filter(s => s.role !== 'outer'));
+            for (const shape of ordered) {
+                const start = vertices.length;
+                const n = shape.points.length;
+                shape.points.forEach(pt => vertices.push({
+                    x: Math.round(pt.x * scale * 100) / 100,
+                    y: Math.round(pt.y * scale * 100) / 100
+                }));
+                for (let i = 0; i < n; i++) lines.push([start + i, start + ((i + 1) % n)]);
+            }
+
+            // Keep the user's tile and unit settings; only the surface and the view change.
+            const design = JSON.parse(this.exportDesign());
+            design.surface = { vertices, lines };
+            const xs = vertices.map(v => v.x), ys = vertices.map(v => v.y);
+            const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+            const w = Math.max(maxX - minX, 1), h = Math.max(maxY - minY, 1);
+            const zoom = Math.min(this.canvas.width * 0.72 / w, this.canvas.height * 0.72 / h, 4);
+            design.appState.zoom = zoom;
+            design.appState.panX = (this.canvas.width - w * zoom) / 2 - minX * zoom;
+            design.appState.panY = (this.canvas.height - h * zoom) / 2 - minY * zoom;
+
+            const outcome = this.importDesign(JSON.stringify(design));
+            if (outcome.success) {
+                document.getElementById('sketchOverlay').style.display = 'none';
+            } else {
+                this.setSketchStatus(outcome.error, 'error');
+            }
+        }
+
         openSaveLoadDialog() {
             const overlay = document.getElementById('saveLoadOverlay');
             const textarea = document.getElementById('saveLoadTextarea');

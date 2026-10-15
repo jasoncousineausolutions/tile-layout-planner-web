@@ -857,6 +857,16 @@
         
         #sketchWarnings ul { margin: 4px 0 0 18px; padding: 0; }
         
+        #sketchWorking {
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--slate-gray);
+            margin-bottom: var(--space-sm);
+        }
+        
+        #sketchWorking summary { cursor: pointer; color: var(--steel-blue); }
+        #sketchWorking ul { margin: 4px 0 0 18px; padding: 0; }
+        
         #sketchButtons {
             display: flex;
             justify-content: flex-end;
@@ -1483,6 +1493,10 @@
             </div>
             <div id="sketchStatus"></div>
             <div id="sketchWarnings"></div>
+            <details id="sketchWorking" style="display:none;">
+                <summary>How the AI measured this</summary>
+                <ul id="sketchWorkingList"></ul>
+            </details>
             <div id="sketchButtons">
                 <button id="sketchConvert">Convert</button>
                 <button id="sketchLoad" style="display:none;">Load into Planner</button>
@@ -4017,7 +4031,8 @@
             if (!shapes.some(s => s.role === 'outer')) return null;
             const warnings = Array.isArray(data.warnings) ? data.warnings.filter(w => typeof w === 'string' && w.trim()).slice(0, 10) : [];
             const model = typeof data.model === 'string' ? data.model.slice(0, 60) : '';
-            return { shapes, warnings, model };
+            const working = Array.isArray(data.working) ? data.working.filter(w => typeof w === 'string' && w.trim()).slice(0, 20) : [];
+            return { shapes, warnings, model, working };
         }
 
         async convertSketch() {
@@ -4030,6 +4045,7 @@
             this.sketchResult = null;
             document.getElementById('sketchLoad').style.display = 'none';
             document.getElementById('sketchWarnings').style.display = 'none';
+            document.getElementById('sketchWorking').style.display = 'none';
             convertBtn.disabled = true;
             this.setSketchStatus('', '');
             this.startSketchProgress();
@@ -4074,6 +4090,18 @@
                     warningsEl.appendChild(title);
                     warningsEl.appendChild(list);
                     warningsEl.style.display = 'block';
+                }
+                const workingEl = document.getElementById('sketchWorking');
+                const workingList = document.getElementById('sketchWorkingList');
+                workingList.textContent = '';
+                if (data.working && data.working.length) {
+                    data.working.forEach(w => {
+                        const li = document.createElement('li');
+                        li.textContent = w;
+                        workingList.appendChild(li);
+                    });
+                    workingEl.removeAttribute('open');
+                    workingEl.style.display = 'block';
                 }
                 document.getElementById('sketchLoad').style.display = '';
             } catch (e) {

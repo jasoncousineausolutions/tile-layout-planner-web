@@ -4016,7 +4016,8 @@
             }
             if (!shapes.some(s => s.role === 'outer')) return null;
             const warnings = Array.isArray(data.warnings) ? data.warnings.filter(w => typeof w === 'string' && w.trim()).slice(0, 10) : [];
-            return { shapes, warnings };
+            const model = typeof data.model === 'string' ? data.model.slice(0, 60) : '';
+            return { shapes, warnings, model };
         }
 
         async convertSketch() {
@@ -4057,7 +4058,8 @@
                 this.sketchResult = data;
                 const outlines = data.shapes.length;
                 this.setSketchStatus('Found ' + outlines + ' outline' + (outlines === 1 ? '' : 's') +
-                    '. Check the notes below, then load it into the planner.', 'success');
+                    '. Check the notes below, then load it into the planner.' +
+                    (data.model ? ' (Read by ' + data.model + ')' : ''), 'success');
                 const warningsEl = document.getElementById('sketchWarnings');
                 warningsEl.textContent = '';
                 if (data.warnings && data.warnings.length) {

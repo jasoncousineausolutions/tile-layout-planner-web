@@ -716,6 +716,31 @@
             margin-bottom: var(--space-sm);
         }
         
+        #sketchBeta {
+            display: inline-block;
+            vertical-align: middle;
+            margin-left: 6px;
+            padding: 2px 7px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            color: #7a5a00;
+            background: #fff0c2;
+            border: 1px solid #e0c060;
+            border-radius: 10px;
+        }
+        
+        #sketchBetaNotice {
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--slate-gray);
+            background: #fff7e0;
+            border: 1px solid #e0c060;
+            border-radius: 4px;
+            padding: var(--space-sm) var(--space-md);
+            margin-bottom: var(--space-md);
+        }
+        
         #sketchInstructions {
             font-size: 13px;
             color: var(--steel-blue);
@@ -732,7 +757,7 @@
         #sketchPreview {
             display: none;
             max-width: 100%;
-            max-height: 180px;
+            max-height: 110px;
             margin: 0 auto var(--space-sm);
             border: 1px solid var(--electric-blue);
             border-radius: 4px;
@@ -1385,10 +1410,15 @@
     
     <div id="sketchOverlay">
         <div id="sketchDialog">
-            <div id="sketchTitle">Import from Sketch</div>
+            <div id="sketchTitle">Import from Sketch <span id="sketchBeta">BETA</span></div>
+            <div id="sketchBetaNotice">
+                <strong>Experimental beta.</strong> This feature may misread sketches, and it may be unavailable at times because of
+                daily usage limits. If it is, you can always draw your surface by hand.
+            </div>
             <div id="sketchInstructions">
-                Take or choose a photo of a sketch with the dimensions written on it. The AI reads the outline and loads it into the planner.
-                Straight-on, well-lit photos work best. <strong>Always check the measurements afterwards</strong>, because the AI can misread them.
+                Take or choose a photo of a sketch with the dimensions written on it. An AI reads the outline and loads it into the planner.
+                Straight-on, well-lit photos work best. <strong>Always check the measurements afterwards.</strong><br>
+                Your photo and hints are sent to Google's Gemini AI service to be read. Don't include anything private in the photo.
             </div>
             <input type="file" id="sketchFile" accept="image/*">
             <img id="sketchPreview" alt="Sketch preview">
@@ -1682,7 +1712,7 @@
             
             <div id="mobileLinks" class="mobile-links-footer">
                 <button id="btnRecenterMobile" style="width: 100%; margin-bottom: 8px;">Re-center View</button>
-                <button id="btnSketchMobile" style="width: 100%; margin-bottom: 8px;">Import from Sketch (AI)</button>
+                <button id="btnSketchMobile" style="width: 100%; margin-bottom: 8px;">Import from Sketch (Beta)</button>
                 <button id="btnSaveLoadMobile" style="width: 100%; margin-bottom: 8px;">Save / Load Design</button>
                 <button id="btnPrintMobile" style="width: 100%; margin-bottom: 8px;">Save as Image</button>
                 <div class="link-buttons">
@@ -1695,7 +1725,7 @@
         <div id="unitsSection">
             <button id="btnCancel" class="danger hidden">Cancel</button>
             <button id="btnRecenter" style="width: 100%; margin-bottom: 10px;">Re-center View</button>
-            <button id="btnSketch" style="width: 100%; margin-bottom: 10px;">Import from Sketch (AI)</button>
+            <button id="btnSketch" style="width: 100%; margin-bottom: 10px;">Import from Sketch (Beta)</button>
             <button id="btnSaveLoad" style="width: 100%; margin-bottom: 10px;">Save / Load Design</button>
             <button id="btnPrint" style="width: 100%; margin-bottom: 10px;">Print / Save as PDF</button>
             <div id="unitsRow">
@@ -3852,6 +3882,44 @@
             });
         }
 
+        // Plain-language messages for each failure code the sketch service can return.
+        sketchErrorMessage(code) {
+            const unavailable = 'Sketch import is a beta feature and is not available right now (it may have reached its usage limit). ' +
+                'Please try again later, or draw your surface by hand.';
+            switch (code) {
+                case 'quota':
+                case 'unavailable':
+                case 'disabled':
+                    return unavailable;
+                case 'rate_limited':
+                    return 'You have sent several sketches in a short time. Please wait a minute and try again.';
+                case 'too_large':
+                case 'bad_image':
+                    return 'That photo could not be used. Try taking another one.';
+                case 'not_a_sketch':
+                    return 'That does not look like a sketch of a surface. Try a photo of your drawing.';
+                case 'no_outline':
+                    return 'Could not find a clear outline in that picture. Try a straighter, better-lit photo, or add hints below.';
+                default:
+                    return 'Something went wrong reading the sketch. Please try again, or draw your surface by hand.';
+            }
+        }
+
+        // Never trust the response: keep only well-formed outlines, or return null if nothing usable is left.
+        validateSketchResult(data) {
+            if (!data || !Array.isArray(data.shapes)) return null;
+            const shapes = [];
+            for (const s of data.shapes) {
+                if (!s || (s.role !== 'outer' && s.role !== 'cutout') || !Array.isArray(s.points) || s.points.length < 3 || s.points.length > 200) continue;
+                const points = s.points.map(p => ({ x: Number(p && p.x), y: Number(p && p.y) }));
+                if (!points.every(p => Number.isFinite(p.x) && Number.isFinite(p.y) && Math.abs(p.x) <= 10000 && Math.abs(p.y) <= 10000)) continue;
+                shapes.push({ role: s.role, points });
+            }
+            if (!shapes.some(s => s.role === 'outer')) return null;
+            const warnings = Array.isArray(data.warnings) ? data.warnings.filter(w => typeof w === 'string' && w.trim()).slice(0, 10) : [];
+            return { shapes, warnings };
+        }
+
         async convertSketch() {
             if (!this.sketchImage) {
                 this.setSketchStatus('Choose or take a photo of your sketch first.', 'error');
@@ -3873,11 +3941,14 @@
                     body: JSON.stringify({ image: this.sketchImage.base64, mimeType: this.sketchImage.mimeType, notes }),
                     signal: controller.signal
                 });
-                let data = null;
-                try { data = await response.json(); } catch (e) { /* non-JSON error page */ }
-                if (!response.ok || !data || !Array.isArray(data.shapes)) {
-                    throw new Error((data && data.error) || 'The sketch reader had a problem. Please try again.');
+                let raw = null;
+                try { raw = await response.json(); } catch (e) { /* not JSON, e.g. an error page */ }
+                if (!response.ok) {
+                    // 404/405 with no JSON means the service is not deployed (or not reachable) yet.
+                    throw Object.assign(new Error(), { sketchCode: (raw && raw.code) || (response.status === 404 || response.status === 405 ? 'unavailable' : 'failed') });
                 }
+                const data = this.validateSketchResult(raw);
+                if (!data) throw Object.assign(new Error(), { sketchCode: 'no_outline' });
                 this.sketchResult = data;
                 const outlines = data.shapes.length;
                 this.setSketchStatus('Found ' + outlines + ' outline' + (outlines === 1 ? '' : 's') +
@@ -3899,10 +3970,12 @@
                 }
                 document.getElementById('sketchLoad').style.display = '';
             } catch (e) {
-                const offline = e.name === 'TypeError';
-                this.setSketchStatus(e.name === 'AbortError'
-                    ? 'That took too long. Please try again.'
-                    : (offline ? 'Could not reach the sketch reader. Check your internet connection.' : e.message), 'error');
+                let message;
+                if (e.sketchCode) message = this.sketchErrorMessage(e.sketchCode);
+                else if (e.name === 'AbortError') message = 'That took too long. Please try again.';
+                else if (e.name === 'TypeError') message = 'Could not reach the sketch reader. Check your internet connection, or draw your surface by hand.';
+                else message = this.sketchErrorMessage('failed');
+                this.setSketchStatus(message, 'error');
             } finally {
                 clearTimeout(timer);
                 convertBtn.disabled = false;

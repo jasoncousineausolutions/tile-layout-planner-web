@@ -793,6 +793,56 @@
         #sketchStatus.success { color: #2d8659; }
         #sketchStatus.error { color: #c00; }
         
+        #sketchProgress {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            font-size: 13px;
+            color: var(--slate-gray);
+            background: #eef3fa;
+            border: 1px solid var(--electric-blue);
+            border-radius: 4px;
+            padding: var(--space-sm) var(--space-md);
+            margin-bottom: var(--space-sm);
+        }
+        
+        .sketch-spinner {
+            flex: none;
+            width: 22px;
+            height: 22px;
+            border: 3px solid #cfd8e6;
+            border-top-color: var(--electric-blue);
+            border-radius: 50%;
+            animation: sketchSpin 0.9s linear infinite;
+        }
+        
+        #sketchProgressBody { flex: 1; min-width: 0; }
+        
+        #sketchProgressBar {
+            position: relative;
+            height: 4px;
+            margin-top: 6px;
+            background: #d9e1ee;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        
+        #sketchProgressFill {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 35%;
+            background: var(--electric-blue);
+            border-radius: 2px;
+            animation: sketchSlide 1.4s ease-in-out infinite;
+        }
+        
+        @keyframes sketchSpin { to { transform: rotate(360deg); } }
+        @keyframes sketchSlide { 0% { left: -35%; } 100% { left: 100%; } }
+        @media (prefers-reduced-motion: reduce) {
+            .sketch-spinner, #sketchProgressFill { animation-duration: 3s; }
+        }
+        
         #sketchWarnings {
             display: none;
             font-size: 13px;
@@ -1424,11 +1474,19 @@
             <img id="sketchPreview" alt="Sketch preview">
             <label id="sketchNotesLabel" for="sketchNotes">Hints (optional)</label>
             <textarea id="sketchNotes" maxlength="1000" placeholder="Examples: The island is 5 ft from the left wall and 2 ft from the bottom. The wall on the right is 8 ft 3 in, not 8 ft 8 in."></textarea>
+            <div id="sketchProgress">
+                <div class="sketch-spinner"></div>
+                <div id="sketchProgressBody">
+                    <div id="sketchProgressText"></div>
+                    <div id="sketchProgressBar"><div id="sketchProgressFill"></div></div>
+                </div>
+            </div>
             <div id="sketchStatus"></div>
             <div id="sketchWarnings"></div>
             <div id="sketchButtons">
                 <button id="sketchConvert">Convert</button>
                 <button id="sketchLoad" style="display:none;">Load into Planner</button>
+                <button id="sketchCancel" style="display:none;">Cancel</button>
                 <button id="sketchClose">Close</button>
             </div>
         </div>
@@ -2451,10 +2509,15 @@
             document.getElementById('btnSketch').addEventListener('click', () => this.openSketchDialog());
             document.getElementById('btnSketchMobile').addEventListener('click', () => this.openSketchDialog());
             document.getElementById('sketchClose').addEventListener('click', () => {
+                this.cancelSketch();
                 document.getElementById('sketchOverlay').style.display = 'none';
             });
+            document.getElementById('sketchCancel').addEventListener('click', () => this.cancelSketch());
             document.getElementById('sketchOverlay').addEventListener('click', (e) => {
-                if (e.target.id === 'sketchOverlay') document.getElementById('sketchOverlay').style.display = 'none';
+                if (e.target.id === 'sketchOverlay') {
+                    this.cancelSketch();
+                    document.getElementById('sketchOverlay').style.display = 'none';
+                }
             });
             document.getElementById('sketchFile').addEventListener('change', (e) => this.onSketchFileChosen(e.target.files && e.target.files[0]));
             document.getElementById('sketchConvert').addEventListener('click', () => this.convertSketch());
@@ -3882,6 +3945,42 @@
             });
         }
 
+        // Shows that work is happening: spinner, moving bar and a seconds counter (there is no honest percentage to show).
+        startSketchProgress() {
+            const box = document.getElementById('sketchProgress');
+            const text = document.getElementById('sketchProgressText');
+            const started = Date.now();
+            const update = () => {
+                const secs = Math.floor((Date.now() - started) / 1000);
+                let msg;
+                if (secs < 3) msg = 'Sending your photo...';
+                else if (secs < 25) msg = 'Reading your sketch...';
+                else if (secs < 45) msg = 'Still working. Detailed sketches take longer...';
+                else msg = 'Almost out of time. Nearly there or it will stop...';
+                text.textContent = msg + ' (' + secs + 's)';
+            };
+            update();
+            box.style.display = 'flex';
+            document.getElementById('sketchCancel').style.display = '';
+            document.getElementById('sketchClose').style.display = 'none';
+            this.sketchProgressTimer = setInterval(update, 500);
+        }
+
+        stopSketchProgress() {
+            clearInterval(this.sketchProgressTimer);
+            this.sketchProgressTimer = null;
+            document.getElementById('sketchProgress').style.display = 'none';
+            document.getElementById('sketchCancel').style.display = 'none';
+            document.getElementById('sketchClose').style.display = '';
+        }
+
+        cancelSketch() {
+            if (this.sketchAbort) {
+                this.sketchCancelled = true;
+                this.sketchAbort.abort();
+            }
+        }
+
         // Plain-language messages for each failure code the sketch service can return.
         sketchErrorMessage(code) {
             const unavailable = 'Sketch import is a beta feature and is not available right now (it may have reached its usage limit). ' +
@@ -3931,8 +4030,11 @@
             document.getElementById('sketchLoad').style.display = 'none';
             document.getElementById('sketchWarnings').style.display = 'none';
             convertBtn.disabled = true;
-            this.setSketchStatus('Reading your sketch... this can take up to a minute.', '');
+            this.setSketchStatus('', '');
+            this.startSketchProgress();
             const controller = new AbortController();
+            this.sketchAbort = controller;
+            this.sketchCancelled = false;
             const timer = setTimeout(() => controller.abort(), 65000);
             try {
                 const response = await fetch(CONFIG.SKETCH_API_URL, {
@@ -3978,12 +4080,14 @@
                     message = this.sketchErrorMessage(e.sketchCode);
                     if (e.sketchDetail && ['failed', 'unavailable', 'quota', 'disabled'].includes(e.sketchCode)) message += ' (Details: ' + e.sketchDetail + ')';
                 }
-                else if (e.name === 'AbortError') message = 'That took too long. Please try again.';
+                else if (e.name === 'AbortError') message = this.sketchCancelled ? 'Canceled.' : 'That took too long. Please try again.';
                 else if (e.name === 'TypeError') message = 'Could not reach the sketch reader. Check your internet connection, or draw your surface by hand.';
                 else message = this.sketchErrorMessage('failed');
                 this.setSketchStatus(message, 'error');
             } finally {
                 clearTimeout(timer);
+                this.stopSketchProgress();
+                this.sketchAbort = null;
                 convertBtn.disabled = false;
             }
         }
@@ -4023,6 +4127,8 @@
             const outcome = this.importDesign(JSON.stringify(design));
             if (outcome.success) {
                 document.getElementById('sketchOverlay').style.display = 'none';
+                // The outline is easiest to check and fix on the Surface Design tab.
+                this.switchTab('surfaceDesign', document.querySelector('.tab[data-tab="surfaceDesign"]'));
             } else {
                 this.setSketchStatus(outcome.error, 'error');
             }

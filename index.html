@@ -687,6 +687,208 @@
             background: #4f739c;
         }
         
+        #sketchOverlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(46, 52, 64, 0.7);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+            padding: var(--space-md);
+        }
+        
+        #sketchDialog {
+            background: var(--white);
+            border-radius: 8px;
+            padding: var(--space-lg);
+            width: 100%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        
+        #sketchTitle {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--slate-gray);
+            margin-bottom: var(--space-sm);
+        }
+        
+        #sketchBeta {
+            display: inline-block;
+            vertical-align: middle;
+            margin-left: 6px;
+            padding: 2px 7px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            color: #7a5a00;
+            background: #fff0c2;
+            border: 1px solid #e0c060;
+            border-radius: 10px;
+        }
+        
+        #sketchBetaNotice {
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--slate-gray);
+            background: #fff7e0;
+            border: 1px solid #e0c060;
+            border-radius: 4px;
+            padding: var(--space-sm) var(--space-md);
+            margin-bottom: var(--space-md);
+        }
+        
+        #sketchInstructions {
+            font-size: 13px;
+            color: var(--steel-blue);
+            margin-bottom: var(--space-md);
+            line-height: 1.5;
+        }
+        
+        #sketchFile {
+            width: 100%;
+            font-size: 14px;
+            margin-bottom: var(--space-sm);
+        }
+        
+        #sketchPreview {
+            display: none;
+            max-width: 100%;
+            max-height: 110px;
+            margin: 0 auto var(--space-sm);
+            border: 1px solid var(--electric-blue);
+            border-radius: 4px;
+        }
+        
+        #sketchNotesLabel {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--slate-gray);
+            margin-bottom: 4px;
+        }
+        
+        #sketchNotes {
+            width: 100%;
+            min-height: 70px;
+            padding: var(--space-sm);
+            font-family: inherit;
+            font-size: 14px;
+            border: 2px solid var(--electric-blue);
+            border-radius: 4px;
+            margin-bottom: var(--space-sm);
+            resize: vertical;
+        }
+        
+        #sketchStatus {
+            font-size: 13px;
+            min-height: 18px;
+            margin-bottom: var(--space-sm);
+            color: var(--steel-blue);
+        }
+        
+        #sketchStatus.success { color: #2d8659; }
+        #sketchStatus.error { color: #c00; }
+        
+        #sketchProgress {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            font-size: 13px;
+            color: var(--slate-gray);
+            background: #eef3fa;
+            border: 1px solid var(--electric-blue);
+            border-radius: 4px;
+            padding: var(--space-sm) var(--space-md);
+            margin-bottom: var(--space-sm);
+        }
+        
+        .sketch-spinner {
+            flex: none;
+            width: 22px;
+            height: 22px;
+            border: 3px solid #cfd8e6;
+            border-top-color: var(--electric-blue);
+            border-radius: 50%;
+            animation: sketchSpin 0.9s linear infinite;
+        }
+        
+        #sketchProgressBody { flex: 1; min-width: 0; }
+        
+        #sketchProgressBar {
+            position: relative;
+            height: 4px;
+            margin-top: 6px;
+            background: #d9e1ee;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        
+        #sketchProgressFill {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 35%;
+            background: var(--electric-blue);
+            border-radius: 2px;
+            animation: sketchSlide 1.4s ease-in-out infinite;
+        }
+        
+        @keyframes sketchSpin { to { transform: rotate(360deg); } }
+        @keyframes sketchSlide { 0% { left: -35%; } 100% { left: 100%; } }
+        @media (prefers-reduced-motion: reduce) {
+            .sketch-spinner, #sketchProgressFill { animation-duration: 3s; }
+        }
+        
+        #sketchWarnings {
+            display: none;
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--slate-gray);
+            background: #fff7e0;
+            border: 1px solid #e0c060;
+            border-radius: 4px;
+            padding: var(--space-sm) var(--space-md);
+            margin-bottom: var(--space-sm);
+        }
+        
+        #sketchWarnings ul { margin: 4px 0 0 18px; padding: 0; }
+        
+        #sketchWorking {
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--slate-gray);
+            margin-bottom: var(--space-sm);
+        }
+        
+        #sketchWorking summary { cursor: pointer; color: var(--steel-blue); }
+        #sketchWorking ul { margin: 4px 0 0 18px; padding: 0; }
+        
+        #sketchButtons {
+            display: flex;
+            justify-content: flex-end;
+            gap: var(--space-sm);
+            flex-wrap: wrap;
+        }
+        
+        #sketchButtons button {
+            width: auto;
+            padding: 10px 20px;
+            margin: 0;
+        }
+        
+        #sketchConvert, #sketchLoad {
+            background: var(--electric-blue);
+            color: var(--white);
+            border-color: var(--electric-blue);
+        }
+        
+        #sketchConvert:hover, #sketchLoad:hover { background: #4f739c; }
+        #sketchConvert:disabled { opacity: 0.6; cursor: default; }
+        
         #printContainer {
             display: none;
         }
@@ -1266,6 +1468,44 @@
         </div>
     </div>
     
+    <div id="sketchOverlay">
+        <div id="sketchDialog">
+            <div id="sketchTitle">Import from Sketch <span id="sketchBeta">BETA</span></div>
+            <div id="sketchBetaNotice">
+                <strong>Experimental beta.</strong> This feature may misread sketches, and it may be unavailable at times because of
+                daily usage limits. If it is, you can always draw your surface by hand.
+            </div>
+            <div id="sketchInstructions">
+                Take or choose a photo of a sketch with the dimensions written on it. An AI reads the outline and loads it into the planner.
+                Straight-on, well-lit photos work best. <strong>Always check the measurements afterwards.</strong><br>
+                Your photo and hints are sent to Google's Gemini AI service to be read. Don't include anything private in the photo. <a href="https://www.jasoncousineau.com/tile-planner-privacy" target="_blank" rel="noopener">Privacy policy</a>
+            </div>
+            <input type="file" id="sketchFile" accept="image/*">
+            <img id="sketchPreview" alt="Sketch preview">
+            <label id="sketchNotesLabel" for="sketchNotes">Hints (optional)</label>
+            <textarea id="sketchNotes" maxlength="1000" placeholder="Examples: The island is 5 ft from the left wall and 2 ft from the bottom. The wall on the right is 8 ft 3 in, not 8 ft 8 in."></textarea>
+            <div id="sketchProgress">
+                <div class="sketch-spinner"></div>
+                <div id="sketchProgressBody">
+                    <div id="sketchProgressText"></div>
+                    <div id="sketchProgressBar"><div id="sketchProgressFill"></div></div>
+                </div>
+            </div>
+            <div id="sketchStatus"></div>
+            <div id="sketchWarnings"></div>
+            <details id="sketchWorking" style="display:none;">
+                <summary>How the AI measured this</summary>
+                <ul id="sketchWorkingList"></ul>
+            </details>
+            <div id="sketchButtons">
+                <button id="sketchConvert">Convert</button>
+                <button id="sketchLoad" style="display:none;">Load into Planner</button>
+                <button id="sketchCancel" style="display:none;">Cancel</button>
+                <button id="sketchClose">Close</button>
+            </div>
+        </div>
+    </div>
+    
     <div id="saveLoadOverlay">
         <div id="saveLoadDialog">
             <div id="saveLoadTitle">Save / Load Design</div>
@@ -1285,8 +1525,8 @@
     
     <div id="canvasContainer">
         <canvas id="canvas"></canvas>
-        <a id="watermark" href="https://sites.google.com/view/jasoncousineausolutions/feb3_2026_tileplannertool" target="_blank">
-            <span>Tile Planner V1.25</span>
+        <a id="watermark" href="https://www.jasoncousineau.com/free-tools/tile-planner" target="_blank">
+            <span>Tile Planner V1.28</span>
             <span>Jason Cousineau Solutions Inc.</span>
         </a>
         <div id="floatingActions">
@@ -1544,11 +1784,12 @@
             
             <div id="mobileLinks" class="mobile-links-footer">
                 <button id="btnRecenterMobile" style="width: 100%; margin-bottom: 8px;">Re-center View</button>
+                <button id="btnSketchMobile" style="width: 100%; margin-bottom: 8px;">Import from Sketch (Beta)</button>
                 <button id="btnSaveLoadMobile" style="width: 100%; margin-bottom: 8px;">Save / Load Design</button>
                 <button id="btnPrintMobile" style="width: 100%; margin-bottom: 8px;">Save as Image</button>
                 <div class="link-buttons">
-                    <a href="https://sites.google.com/view/jasoncousineausolutions/feb3_2026_tileplannertool#h.gkb7hrizouuu" target="_blank" class="link-btn">Help</a>
-                    <a href="https://sites.google.com/view/jasoncousineausolutions/feb3_2026_tileplannertool#h.13h408e3kswd" target="_blank" class="link-btn donate">Donate</a>
+                    <a href="https://www.jasoncousineau.com/free-tools/tile-planner#instructions" target="_blank" class="link-btn">Help</a>
+                    <a href="https://www.jasoncousineau.com/free-tools/tile-planner#donate" target="_blank" class="link-btn donate">Donate</a>
                 </div>
             </div>
         </div>
@@ -1556,6 +1797,7 @@
         <div id="unitsSection">
             <button id="btnCancel" class="danger hidden">Cancel</button>
             <button id="btnRecenter" style="width: 100%; margin-bottom: 10px;">Re-center View</button>
+            <button id="btnSketch" style="width: 100%; margin-bottom: 10px;">Import from Sketch (Beta)</button>
             <button id="btnSaveLoad" style="width: 100%; margin-bottom: 10px;">Save / Load Design</button>
             <button id="btnPrint" style="width: 100%; margin-bottom: 10px;">Print / Save as PDF</button>
             <div id="unitsRow">
@@ -1574,8 +1816,8 @@
                 </div>
             </div>
             <div class="link-buttons">
-                <a href="https://sites.google.com/view/jasoncousineausolutions/feb3_2026_tileplannertool#h.gkb7hrizouuu" target="_blank" class="link-btn">Help</a>
-                <a href="https://sites.google.com/view/jasoncousineausolutions/feb3_2026_tileplannertool#h.13h408e3kswd" target="_blank" class="link-btn donate">Donate</a>
+                <a href="https://www.jasoncousineau.com/free-tools/tile-planner#instructions" target="_blank" class="link-btn">Help</a>
+                <a href="https://www.jasoncousineau.com/free-tools/tile-planner#donate" target="_blank" class="link-btn donate">Donate</a>
             </div>
         </div>
     </div>
@@ -1587,6 +1829,8 @@
     const CONFIG = {
         // Display
         PIXELS_PER_INCH: 10.8,
+        SKETCH_API_URL: 'https://www.jasoncousineau.com/api/sketch',
+        SKETCH_IMAGE_MAX_PX: 1600,
         HANDLE_SIZE: 6,
         
         // Snap mode presets (in screen pixels)
@@ -2276,6 +2520,22 @@
             // Save/Load dialog
             document.getElementById('btnSaveLoad').addEventListener('click', () => this.openSaveLoadDialog());
             document.getElementById('btnSaveLoadMobile').addEventListener('click', () => this.openSaveLoadDialog());
+            document.getElementById('btnSketch').addEventListener('click', () => this.openSketchDialog());
+            document.getElementById('btnSketchMobile').addEventListener('click', () => this.openSketchDialog());
+            document.getElementById('sketchClose').addEventListener('click', () => {
+                this.cancelSketch();
+                document.getElementById('sketchOverlay').style.display = 'none';
+            });
+            document.getElementById('sketchCancel').addEventListener('click', () => this.cancelSketch());
+            document.getElementById('sketchOverlay').addEventListener('click', (e) => {
+                if (e.target.id === 'sketchOverlay') {
+                    this.cancelSketch();
+                    document.getElementById('sketchOverlay').style.display = 'none';
+                }
+            });
+            document.getElementById('sketchFile').addEventListener('change', (e) => this.onSketchFileChosen(e.target.files && e.target.files[0]));
+            document.getElementById('sketchConvert').addEventListener('click', () => this.convertSketch());
+            document.getElementById('sketchLoad').addEventListener('click', () => this.loadSketchResult());
             document.getElementById('btnPrint').addEventListener('click', () => this.printDesign());
             document.getElementById('btnPrintMobile').addEventListener('click', () => this.saveAsImage());
             
@@ -3621,6 +3881,289 @@
             }
         }
         
+        // --------------------------------------------------------
+        // SKETCH IMPORT (photo -> AI -> outlines in inches -> planner)
+        // --------------------------------------------------------
+
+        setSketchStatus(text, kind) {
+            const el = document.getElementById('sketchStatus');
+            el.textContent = text || '';
+            el.className = kind || '';
+        }
+
+        openSketchDialog() {
+            // The photo and hints are kept between openings, so a wrong result can be retried with more hints.
+            this.sketchResult = null;
+            document.getElementById('sketchLoad').style.display = 'none';
+            document.getElementById('sketchWarnings').style.display = 'none';
+            this.setSketchStatus('', '');
+            document.getElementById('sketchConvert').disabled = false;
+            const preview = document.getElementById('sketchPreview');
+            if (this.sketchImage) {
+                preview.src = this.sketchImage.dataUrl;
+                preview.style.display = 'block';
+            } else {
+                preview.style.display = 'none';
+            }
+            document.getElementById('sketchOverlay').style.display = 'flex';
+        }
+
+        async onSketchFileChosen(file) {
+            this.sketchResult = null;
+            document.getElementById('sketchLoad').style.display = 'none';
+            document.getElementById('sketchWarnings').style.display = 'none';
+            if (!file) return;
+            this.setSketchStatus('Reading photo...', '');
+            try {
+                this.sketchImage = await this.prepareSketchImage(file);
+                const preview = document.getElementById('sketchPreview');
+                preview.src = this.sketchImage.dataUrl;
+                preview.style.display = 'block';
+                this.setSketchStatus('', '');
+            } catch (e) {
+                this.sketchImage = null;
+                document.getElementById('sketchPreview').style.display = 'none';
+                this.setSketchStatus(e.message || 'Could not read that image.', 'error');
+            }
+        }
+
+        // Shrinks the photo (long side <= SKETCH_IMAGE_MAX_PX) and re-encodes it as JPEG so uploads stay small and fast.
+        prepareSketchImage(file) {
+            return new Promise((resolve, reject) => {
+                const url = URL.createObjectURL(file);
+                const img = new Image();
+                img.onload = () => {
+                    try {
+                        const longSide = Math.max(img.naturalWidth, img.naturalHeight);
+                        const scale = Math.min(1, CONFIG.SKETCH_IMAGE_MAX_PX / longSide);
+                        const c = document.createElement('canvas');
+                        c.width = Math.max(1, Math.round(img.naturalWidth * scale));
+                        c.height = Math.max(1, Math.round(img.naturalHeight * scale));
+                        const cctx = c.getContext('2d');
+                        cctx.fillStyle = '#ffffff';
+                        cctx.fillRect(0, 0, c.width, c.height);
+                        cctx.drawImage(img, 0, 0, c.width, c.height);
+                        const dataUrl = c.toDataURL('image/jpeg', 0.85);
+                        resolve({ dataUrl, base64: dataUrl.split(',')[1], mimeType: 'image/jpeg' });
+                    } catch (e) {
+                        reject(new Error('Could not read that image.'));
+                    } finally {
+                        URL.revokeObjectURL(url);
+                    }
+                };
+                img.onerror = () => {
+                    URL.revokeObjectURL(url);
+                    reject(new Error('Could not read that image. Try a JPEG or PNG photo.'));
+                };
+                img.src = url;
+            });
+        }
+
+        // Shows that work is happening: spinner, moving bar and a seconds counter (there is no honest percentage to show).
+        startSketchProgress() {
+            const box = document.getElementById('sketchProgress');
+            const text = document.getElementById('sketchProgressText');
+            const started = Date.now();
+            const update = () => {
+                const secs = Math.floor((Date.now() - started) / 1000);
+                let msg;
+                if (secs < 3) msg = 'Sending your photo...';
+                else if (secs < 25) msg = 'Reading your sketch...';
+                else if (secs < 45) msg = 'Still working. Detailed sketches take longer...';
+                else msg = 'Almost out of time. Nearly there or it will stop...';
+                text.textContent = msg + ' (' + secs + 's)';
+            };
+            update();
+            box.style.display = 'flex';
+            document.getElementById('sketchCancel').style.display = '';
+            document.getElementById('sketchClose').style.display = 'none';
+            this.sketchProgressTimer = setInterval(update, 500);
+        }
+
+        stopSketchProgress() {
+            clearInterval(this.sketchProgressTimer);
+            this.sketchProgressTimer = null;
+            document.getElementById('sketchProgress').style.display = 'none';
+            document.getElementById('sketchCancel').style.display = 'none';
+            document.getElementById('sketchClose').style.display = '';
+        }
+
+        cancelSketch() {
+            if (this.sketchAbort) {
+                this.sketchCancelled = true;
+                this.sketchAbort.abort();
+            }
+        }
+
+        // Plain-language messages for each failure code the sketch service can return.
+        sketchErrorMessage(code) {
+            const unavailable = 'Sketch import is a beta feature and is not available right now (it may have reached its usage limit). ' +
+                'Please try again later, or draw your surface by hand.';
+            switch (code) {
+                case 'quota':
+                case 'unavailable':
+                case 'disabled':
+                    return unavailable;
+                case 'rate_limited':
+                    return 'You have sent several sketches in a short time. Please wait a minute and try again.';
+                case 'too_large':
+                case 'bad_image':
+                    return 'That photo could not be used. Try taking another one.';
+                case 'not_a_sketch':
+                    return 'That does not look like a sketch of a surface. Try a photo of your drawing.';
+                case 'no_outline':
+                    return 'Could not find a clear outline in that picture. Try a straighter, better-lit photo, or add hints below.';
+                default:
+                    return 'Something went wrong reading the sketch. Please try again, or draw your surface by hand.';
+            }
+        }
+
+        // Never trust the response: keep only well-formed outlines, or return null if nothing usable is left.
+        validateSketchResult(data) {
+            if (!data || !Array.isArray(data.shapes)) return null;
+            const shapes = [];
+            for (const s of data.shapes) {
+                if (!s || (s.role !== 'outer' && s.role !== 'cutout') || !Array.isArray(s.points) || s.points.length < 3 || s.points.length > 200) continue;
+                const points = s.points.map(p => ({ x: Number(p && p.x), y: Number(p && p.y) }));
+                if (!points.every(p => Number.isFinite(p.x) && Number.isFinite(p.y) && Math.abs(p.x) <= 10000 && Math.abs(p.y) <= 10000)) continue;
+                shapes.push({ role: s.role, points });
+            }
+            if (!shapes.some(s => s.role === 'outer')) return null;
+            const warnings = Array.isArray(data.warnings) ? data.warnings.filter(w => typeof w === 'string' && w.trim()).slice(0, 10) : [];
+            const model = typeof data.model === 'string' ? data.model.slice(0, 60) : '';
+            const working = Array.isArray(data.working) ? data.working.filter(w => typeof w === 'string' && w.trim()).slice(0, 20) : [];
+            return { shapes, warnings, model, working };
+        }
+
+        async convertSketch() {
+            if (!this.sketchImage) {
+                this.setSketchStatus('Choose or take a photo of your sketch first.', 'error');
+                return;
+            }
+            const convertBtn = document.getElementById('sketchConvert');
+            const notes = document.getElementById('sketchNotes').value.trim();
+            this.sketchResult = null;
+            document.getElementById('sketchLoad').style.display = 'none';
+            document.getElementById('sketchWarnings').style.display = 'none';
+            document.getElementById('sketchWorking').style.display = 'none';
+            convertBtn.disabled = true;
+            this.setSketchStatus('', '');
+            this.startSketchProgress();
+            const controller = new AbortController();
+            this.sketchAbort = controller;
+            this.sketchCancelled = false;
+            const timer = setTimeout(() => controller.abort(), 65000);
+            try {
+                const response = await fetch(CONFIG.SKETCH_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: this.sketchImage.base64, mimeType: this.sketchImage.mimeType, notes }),
+                    signal: controller.signal
+                });
+                let raw = null;
+                try { raw = await response.json(); } catch (e) { /* not JSON, e.g. an error page */ }
+                if (!response.ok) {
+                    // 404/405 with no JSON means the service is not deployed (or not reachable) yet.
+                    throw Object.assign(new Error(), {
+                        sketchCode: (raw && raw.code) || (response.status === 404 || response.status === 405 ? 'unavailable' : 'failed'),
+                        sketchDetail: (raw && typeof raw.detail === 'string' && raw.detail) || ('http ' + response.status)
+                    });
+                }
+                const data = this.validateSketchResult(raw);
+                if (!data) throw Object.assign(new Error(), { sketchCode: 'no_outline' });
+                this.sketchResult = data;
+                const outlines = data.shapes.length;
+                this.setSketchStatus('Found ' + outlines + ' outline' + (outlines === 1 ? '' : 's') +
+                    '. Check the notes below, then load it into the planner.' +
+                    (data.model ? ' (Read by ' + data.model + ')' : ''), 'success');
+                const warningsEl = document.getElementById('sketchWarnings');
+                warningsEl.textContent = '';
+                if (data.warnings && data.warnings.length) {
+                    const title = document.createElement('strong');
+                    title.textContent = 'The AI wants you to check:';
+                    const list = document.createElement('ul');
+                    data.warnings.forEach(w => {
+                        const li = document.createElement('li');
+                        li.textContent = w;
+                        list.appendChild(li);
+                    });
+                    warningsEl.appendChild(title);
+                    warningsEl.appendChild(list);
+                    warningsEl.style.display = 'block';
+                }
+                const workingEl = document.getElementById('sketchWorking');
+                const workingList = document.getElementById('sketchWorkingList');
+                workingList.textContent = '';
+                if (data.working && data.working.length) {
+                    data.working.forEach(w => {
+                        const li = document.createElement('li');
+                        li.textContent = w;
+                        workingList.appendChild(li);
+                    });
+                    workingEl.removeAttribute('open');
+                    workingEl.style.display = 'block';
+                }
+                document.getElementById('sketchLoad').style.display = '';
+            } catch (e) {
+                let message;
+                if (e.sketchCode) {
+                    message = this.sketchErrorMessage(e.sketchCode);
+                    if (e.sketchDetail && ['failed', 'unavailable', 'quota', 'disabled'].includes(e.sketchCode)) message += ' (Details: ' + e.sketchDetail + ')';
+                }
+                else if (e.name === 'AbortError') message = this.sketchCancelled ? 'Canceled.' : 'That took too long. Please try again.';
+                else if (e.name === 'TypeError') message = 'Could not reach the sketch reader. Check your internet connection, or draw your surface by hand.';
+                else message = this.sketchErrorMessage('failed');
+                this.setSketchStatus(message, 'error');
+            } finally {
+                clearTimeout(timer);
+                this.stopSketchProgress();
+                this.sketchAbort = null;
+                convertBtn.disabled = false;
+            }
+        }
+
+        loadSketchResult() {
+            const result = this.sketchResult;
+            if (!result) return;
+            if (this.vertices.length > 0 &&
+                !confirm('This replaces the surface you have drawn now. Load the sketch anyway?')) return;
+
+            const scale = CONFIG.PIXELS_PER_INCH;
+            const vertices = [];
+            const lines = [];
+            // Outer outline first, then cutouts; each is a closed loop of lines.
+            const ordered = result.shapes.filter(s => s.role === 'outer').concat(result.shapes.filter(s => s.role !== 'outer'));
+            for (const shape of ordered) {
+                const start = vertices.length;
+                const n = shape.points.length;
+                shape.points.forEach(pt => vertices.push({
+                    x: Math.round(pt.x * scale * 100) / 100,
+                    y: Math.round(pt.y * scale * 100) / 100
+                }));
+                for (let i = 0; i < n; i++) lines.push([start + i, start + ((i + 1) % n)]);
+            }
+
+            // Keep the user's tile and unit settings; only the surface and the view change.
+            const design = JSON.parse(this.exportDesign());
+            design.surface = { vertices, lines };
+            const xs = vertices.map(v => v.x), ys = vertices.map(v => v.y);
+            const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+            const w = Math.max(maxX - minX, 1), h = Math.max(maxY - minY, 1);
+            const zoom = Math.min(this.canvas.width * 0.72 / w, this.canvas.height * 0.72 / h, 4);
+            design.appState.zoom = zoom;
+            design.appState.panX = (this.canvas.width - w * zoom) / 2 - minX * zoom;
+            design.appState.panY = (this.canvas.height - h * zoom) / 2 - minY * zoom;
+
+            const outcome = this.importDesign(JSON.stringify(design));
+            if (outcome.success) {
+                document.getElementById('sketchOverlay').style.display = 'none';
+                // The outline is easiest to check and fix on the Surface Design tab.
+                this.switchTab('surfaceDesign', document.querySelector('.tab[data-tab="surfaceDesign"]'));
+            } else {
+                this.setSketchStatus(outcome.error, 'error');
+            }
+        }
+
         openSaveLoadDialog() {
             const overlay = document.getElementById('saveLoadOverlay');
             const textarea = document.getElementById('saveLoadTextarea');
@@ -4386,7 +4929,7 @@
             ctx.textAlign = 'right';
             ctx.textBaseline = 'bottom';
             ctx.font = '500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-            ctx.fillText('Tile Planner V1.25', w - 14, h - 22);
+            ctx.fillText('Tile Planner V1.28', w - 14, h - 22);
             ctx.font = '500 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
             ctx.fillText('Jason Cousineau Solutions Inc.', w - 14, h - 8);
             ctx.restore();

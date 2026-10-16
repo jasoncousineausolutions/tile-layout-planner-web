@@ -1062,6 +1062,10 @@
             display: none;
         }
         
+        /* Label size control (Surface Design and Finalize tabs) */
+        .label-size-group { margin: var(--space-sm) 0; }
+        .label-size-group select { width: 100%; }
+        
         /* Units section label variants */
         .units-label-compact {
             display: none;
@@ -1684,6 +1688,17 @@
                     </div>
                 </div>
                 
+                <div class="input-group label-size-group">
+                    <label for="labelSizeSurface">Label size:</label>
+                    <select id="labelSizeSurface" class="label-size-select">
+                            <option value="0.85">Small</option>
+                            <option value="1" selected>Normal</option>
+                            <option value="1.4">Large</option>
+                            <option value="1.8">Extra large</option>
+                            <option value="2.4">Huge</option>
+                    </select>
+                </div>
+                
                 <div class="section-title mobile-hide">Tile Alignment</div>
                 
                 <div class="input-group offset-row">
@@ -1746,6 +1761,16 @@
                         <input type="checkbox" id="showAngles" disabled>
                         Show Angles
                     </label>
+                </div>
+                <div class="input-group label-size-group">
+                    <label for="labelSizeFinalize">Label size:</label>
+                    <select id="labelSizeFinalize" class="label-size-select">
+                            <option value="0.85">Small</option>
+                            <option value="1" selected>Normal</option>
+                            <option value="1.4">Large</option>
+                            <option value="1.8">Extra large</option>
+                            <option value="2.4">Huge</option>
+                    </select>
                 </div>
                 
                 <div class="section-title mobile-hide">Tile Estimate (Beta)</div>
@@ -2290,6 +2315,11 @@
             this.mode = Mode.ADD_LINE;
             this.distanceToolEnabled = false;
             this.unitMode = 'decimal2';
+            this.labelScale = 1;   // size of measurement and angle labels (1 = normal); a view preference, remembered on this device
+            try {
+                const saved = parseFloat(localStorage.getItem('tilePlanner_labelScale'));
+                if (saved >= 0.5 && saved <= 3) this.labelScale = saved;
+            } catch (e) { /* storage unavailable: use the default */ }
             this.currentTab = 'tileLayout';
             this.snapMode = 'auto';
             
@@ -2463,6 +2493,24 @@
             });
             
             // Unit selector
+            // Label size: there is one select in the Surface Design tab and one in Finalize; they always show the same choice.
+            const labelSizeSelects = [...document.querySelectorAll('.label-size-select')];
+            const showLabelScale = () => labelSizeSelects.forEach(sel => {
+                // a remembered size that is not one of the presets gets its own entry
+                if (![...sel.options].some(o => parseFloat(o.value) === this.labelScale)) {
+                    const o = document.createElement('option'); o.value = String(this.labelScale); o.textContent = 'Custom'; sel.appendChild(o);
+                }
+                sel.value = String(this.labelScale);
+            });
+            showLabelScale();
+            labelSizeSelects.forEach(sel => sel.addEventListener('change', (e) => {
+                const v = parseFloat(e.target.value);
+                if (!(v >= 0.5 && v <= 3)) return;
+                this.labelScale = v;
+                showLabelScale();
+                try { localStorage.setItem('tilePlanner_labelScale', String(v)); } catch (err) { /* ignore */ }
+                this.redraw();
+            }));
             document.getElementById('unitMode').addEventListener('change', () => {
                 document.getElementById('unitModeMobile').value = document.getElementById('unitMode').value;
                 this.changeUnits();
@@ -5214,10 +5262,11 @@
             if (displayAngle > Math.PI / 2) displayAngle -= Math.PI;
             if (displayAngle < -Math.PI / 2) displayAngle += Math.PI;
             ctx.rotate(displayAngle);
-            ctx.font = 'bold 10px sans-serif';
+            const ls = this.labelScale;
+            ctx.font = `bold ${10 * ls}px sans-serif`;
             const metrics = ctx.measureText(text);
             ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-            ctx.fillRect(-metrics.width/2 - 2, -9, metrics.width + 4, 15);
+            ctx.fillRect(-metrics.width/2 - 2 * ls, -9 * ls, metrics.width + 4 * ls, 15 * ls);
             ctx.fillStyle = '#c00';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -5462,17 +5511,18 @@
                             
                             // Label at bisector
                             const bisect = bestTeAngle + arcDiff / 2;
-                            const labelR = arcRadius + 14 / this.zoom;
+                            const labelR = arcRadius + 14 * this.labelScale / this.zoom;
                             const lx = inter.x + Math.cos(bisect) * labelR;
                             const ly = inter.y + Math.sin(bisect) * labelR;
                             const labelText = angleDeg.toFixed(1) + '\u00B0';
                             
                             ctx.translate(lx, ly);
                             ctx.scale(1 / this.zoom, 1 / this.zoom);
-                            ctx.font = 'bold 10px sans-serif';
+                            const als = this.labelScale;
+                            ctx.font = `bold ${10 * als}px sans-serif`;
                             const metrics = ctx.measureText(labelText);
                             ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-                            ctx.fillRect(-metrics.width / 2 - 2, -9, metrics.width + 4, 15);
+                            ctx.fillRect(-metrics.width / 2 - 2 * als, -9 * als, metrics.width + 4 * als, 15 * als);
                             ctx.fillStyle = '#8B6914';
                             ctx.textAlign = 'center';
                             ctx.textBaseline = 'middle';
@@ -5560,8 +5610,8 @@
             ctx.translate(worldX, worldY);
             ctx.scale(1 / this.zoom, 1 / this.zoom);
             ctx.fillStyle = color;
-            ctx.font = '12px sans-serif';
-            ctx.fillText(text, offsetX, offsetY);
+            ctx.font = `${12 * this.labelScale}px sans-serif`;
+            ctx.fillText(text, offsetX * this.labelScale, offsetY * this.labelScale);
             ctx.restore();
         }
 

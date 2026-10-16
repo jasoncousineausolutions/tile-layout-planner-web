@@ -140,6 +140,29 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['ph
   });
 
   await step('no errors during all of the above', async () => expect(page.errors.length === 0, page.errors.join(' | ')));
+
+  await step('label size: labels get bigger, both selects stay in step, and the choice is remembered', async () => {
+    // record every font the canvas is asked to use
+    await page.evaluate(() => { window.__fonts = new Set(); const d = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'font'); Object.defineProperty(CanvasRenderingContext2D.prototype, 'font', { set(v) { window.__fonts.add(v); d.set.call(this, v); }, get() { return d.get.call(this); } }); });
+    const setSize = (id, v) => page.evaluate(([i, val]) => { const el = document.getElementById(i); el.value = val; el.dispatchEvent(new Event('change', { bubbles: true })); }, [id, v]);
+    await page.click('.tab[data-tab="finalize"]'); await page.waitForTimeout(250);
+    await page.evaluate(() => { if (app.selectedSurfaces.length === 0) app.toggleSurfaceSelection(0); const c = document.getElementById('showAngles'); c.checked = true; c.dispatchEvent(new Event('change', { bubbles: true })); });
+    expect(await page.isVisible('#labelSizeFinalize'), 'the Label size select is not visible in the Finalize tab');
+    await setSize('labelSizeFinalize', '1.8');
+    expect((await page.evaluate(() => document.getElementById('labelSizeSurface').value)) === '1.8', 'the Surface Design select did not follow the Finalize one');
+    await page.waitForTimeout(250);
+    let fonts = await page.evaluate(() => [...window.__fonts]);
+    expect(fonts.includes('bold 18px sans-serif'), 'cut-measurement labels are not 1.8x bigger: ' + fonts.join(' | '));
+    await page.click('.tab[data-tab="surfaceDesign"]'); await page.waitForTimeout(250);
+    expect(await page.isVisible('#labelSizeSurface'), 'the Label size select is not visible in the Surface Design tab');
+    fonts = await page.evaluate(() => [...window.__fonts]);
+    expect(fonts.includes('21.6px sans-serif'), 'wall-length labels are not 1.8x bigger: ' + fonts.join(' | '));
+    await page.reload(); await page.waitForTimeout(400);
+    expect((await page.evaluate(() => document.getElementById('labelSizeSurface').value)) === '1.8', 'the choice was not remembered after a reload');
+    await setSize('labelSizeSurface', '1');
+    expect((await page.evaluate(() => document.getElementById('labelSizeFinalize').value)) === '1', 'the Finalize select did not follow the Surface Design one');
+    expect(page.errors.length === 0, page.errors.join(' | '));
+  });
   await page.context().close();
 
   // ---------- sketch import ----------

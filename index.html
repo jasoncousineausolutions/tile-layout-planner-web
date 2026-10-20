@@ -5014,6 +5014,7 @@
 
         redraw() {
             const ctx = this.ctx;
+            this._labelRects = [];
             ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
             ctx.save();
             ctx.translate(this.panX, this.panY);
@@ -5328,17 +5329,37 @@
         
         drawMeasurementLabel(ctx, text, midpoint, angle) {
             ctx.save();
-            ctx.translate(midpoint.x, midpoint.y);
-            ctx.scale(1 / this.zoom, 1 / this.zoom);
             let displayAngle = angle;
             if (displayAngle > Math.PI / 2) displayAngle -= Math.PI;
             if (displayAngle < -Math.PI / 2) displayAngle += Math.PI;
-            ctx.rotate(displayAngle);
             const ls = this.labelScale;
             ctx.font = `bold ${10 * ls}px sans-serif`;
             const metrics = ctx.measureText(text);
+            const boxW = metrics.width + 4 * ls, boxH = 15 * ls;
+            // Larger labels crowd each other on short walls: slide a label sideways off the ones already drawn this frame.
+            let shift = 0, slide = 0;
+            if (ls > 1) {
+                const cx = midpoint.x * this.zoom + this.panX, cy = midpoint.y * this.zoom + this.panY;
+                const cos = Math.cos(displayAngle), sin = Math.sin(displayAngle);
+                const halfW = (Math.abs(cos) * boxW + Math.abs(sin) * boxH) / 2, halfH = (Math.abs(sin) * boxW + Math.abs(cos) * boxH) / 2;
+                const rects = this._labelRects || (this._labelRects = []);
+                const at = (along, perp) => ({ x: cx + cos * along - sin * perp, y: cy + sin * along + cos * perp });
+                const free = (pt) => !rects.some(r => Math.abs(r.x - pt.x) < r.hw + halfW && Math.abs(r.y - pt.y) < r.hh + halfH);
+                const tries = [];
+                for (const a of [0, 0.5, -0.5, 1, -1]) for (const k of [0, 1, -1, 2, -2]) tries.push([a * boxW, k * boxH]);
+                tries.sort((u, v) => Math.hypot(u[0], u[1]) - Math.hypot(v[0], v[1]));
+                for (const [a, k] of tries) {
+                    if (free(at(a, k))) { slide = a; shift = k; break; }
+                }
+                const pt = at(slide, shift);
+                rects.push({ x: pt.x, y: pt.y, hw: halfW, hh: halfH });
+            }
+            ctx.translate(midpoint.x, midpoint.y);
+            ctx.scale(1 / this.zoom, 1 / this.zoom);
+            ctx.rotate(displayAngle);
+            ctx.translate(slide, shift);
             ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-            ctx.fillRect(-metrics.width/2 - 2 * ls, -9 * ls, metrics.width + 4 * ls, 15 * ls);
+            ctx.fillRect(-metrics.width/2 - 2 * ls, -9 * ls, boxW, boxH);
             ctx.fillStyle = this.displayColors.cutLabel;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';

@@ -1041,9 +1041,13 @@
         }
         
         .toggle-section-btn {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
             width: 100%;
-            padding: 6px;
-            font-size: 12px;
+            padding: 8px 10px;
+            font-size: 13px;
+            font-weight: 600;
             background: var(--light-gray);
             border: 1px solid var(--steel-blue);
             border-radius: 4px;
@@ -1051,6 +1055,18 @@
             text-align: left;
             color: var(--steel-blue);
             margin-top: var(--space-xs);
+        }
+        .toggle-section-btn::after {
+            content: '';
+            width: 7px;
+            height: 7px;
+            border-right: 2px solid currentColor;
+            border-bottom: 2px solid currentColor;
+            transform: translateY(-2px) rotate(45deg);
+            transition: transform 0.15s;
+        }
+        .toggle-section-btn[aria-expanded="true"]::after {
+            transform: translateY(2px) rotate(-135deg);
         }
         
         .collapsible-section {
@@ -1061,6 +1077,12 @@
         .mobile-links-footer {
             display: none;
         }
+        
+        /* Display Options: colour pickers */
+        .display-colors { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--space-xs) var(--space-sm); margin-bottom: var(--space-xs); }
+        .display-colors label { margin: 0; font-size: 12px; }
+        .display-colors input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid var(--light-gray); border-radius: 3px; background: none; cursor: pointer; }
+        .display-colors button { grid-column: 1 / -1; }
         
         /* Units section label variants */
         .units-label-compact {
@@ -1604,7 +1626,7 @@
                     </div>
                 </div>
                 
-                <button id="btnToggleGrout" class="toggle-section-btn" style="margin-top: var(--space-sm);">Grout Estimation ▼</button>
+                <button id="btnToggleGrout" class="toggle-section-btn" aria-expanded="false" style="margin-top: var(--space-sm);">Grout Estimation</button>
                 <div id="groutCollapsible" class="collapsible-section" style="display: none;">
                     <div class="input-group">
                         <label id="labelTileDepth">Tile Depth:</label>
@@ -1635,13 +1657,15 @@
                 </div>
                 
                 <div class="info-box">
-                    <strong>Tip:</strong> Enter measurements with units (e.g., "12mm", "5cm", "3.5"") or use the Display Units setting below.
+                    <strong>Tip:</strong> Enter measurements with units (e.g., "12mm", "5cm", "3.5"") or use the Display Options setting.
                 </div>
                 
                 <div class="mobile-units-section">
-                    <div class="mobile-units-row">
-                        <label for="unitModeMobile">Units:</label>
-                        <select id="unitModeMobile">
+                    <button id="btnToggleDisplayMobile" class="toggle-section-btn" aria-expanded="false">Display Options</button>
+                    <div id="displayCollapsibleMobile" class="collapsible-section" style="display: none;">
+                        <div class="input-group">
+                            <label for="unitModeMobile">Units:</label>
+                            <select id="unitModeMobile">
                             <option value="metric">Metric (mm)</option>
                             <option value="decimal2" selected>Inches (0.00")</option>
                             <option value="decimal3">Inches (0.000")</option>
@@ -1650,6 +1674,18 @@
                             <option value="thirtysecond">Inches (1/32")</option>
                             <option value="sixtyfourth">Inches (1/64")</option>
                         </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Label size:</label>
+                            <select class="label-size-select">
+                                <option value="0.85">Small</option>
+                                <option value="1" selected>Normal</option>
+                                <option value="1.4">Large</option>
+                                <option value="1.8">Extra large</option>
+                                <option value="2.4">Huge</option>
+                            </select>
+                        </div>
+                        <div class="display-colors"></div>
                     </div>
                 </div>
             </div>
@@ -1713,7 +1749,7 @@
             
             <div id="finalizeTab" class="tab-pane">
                 <div class="mobile-only-section">
-                    <button id="btnToggleSelection" class="toggle-section-btn">Surfaces ▼</button>
+                    <button id="btnToggleSelection" class="toggle-section-btn" aria-expanded="false">Surfaces</button>
                     <div id="selectionCollapsible" class="collapsible-section" style="display: none;">
                         <div id="surfaceListMobile" class="surface-list">
                             <p class="hint-text">Surfaces will appear here.</p>
@@ -1753,7 +1789,7 @@
                     <p class="hint-text">Select surfaces to see tile estimate.</p>
                 </div>
                 <div class="mobile-only-section">
-                    <button id="btnToggleTileEstimate" class="toggle-section-btn">Tile Estimate (Beta) ▼</button>
+                    <button id="btnToggleTileEstimate" class="toggle-section-btn" aria-expanded="false">Tile Estimate (Beta)</button>
                     <div id="tileEstimateCollapsible" class="collapsible-section" style="display: none;">
                         <div id="tileCountSummaryMobile" class="tile-count-summary">
                             <p class="hint-text">Select surfaces to see tile estimate.</p>
@@ -1801,10 +1837,11 @@
             <button id="btnSaveLoad" style="width: 100%; margin-bottom: 10px;">Save / Load Design</button>
             <button id="btnPrint" style="width: 100%; margin-bottom: 10px;">Print / Save as PDF</button>
             <div id="unitsRow">
-                <div class="section-title units-title-full" style="margin-top: 0;">Display Units</div>
-                <label class="units-label-compact" for="unitMode">Units:</label>
-                <div class="input-group" style="margin-bottom: 12px;">
-                    <select id="unitMode">
+                <button id="btnToggleDisplay" class="toggle-section-btn" aria-expanded="false" style="margin-top: 0;">Display Options</button>
+                <div id="displayCollapsible" class="collapsible-section" style="display: none;">
+                    <div class="input-group">
+                        <label for="unitMode">Units:</label>
+                        <select id="unitMode">
                         <option value="metric">Metric (mm)</option>
                         <option value="decimal2" selected>Inches (0.00")</option>
                         <option value="decimal3">Inches (0.000")</option>
@@ -1813,6 +1850,18 @@
                         <option value="thirtysecond">Inches (1/32")</option>
                         <option value="sixtyfourth">Inches (1/64")</option>
                     </select>
+                    </div>
+                    <div class="input-group">
+                            <label>Label size:</label>
+                            <select class="label-size-select">
+                                <option value="0.85">Small</option>
+                                <option value="1" selected>Normal</option>
+                                <option value="1.4">Large</option>
+                                <option value="1.8">Extra large</option>
+                                <option value="2.4">Huge</option>
+                            </select>
+                        </div>
+                    <div class="display-colors"></div>
                 </div>
             </div>
             <div class="link-buttons">
@@ -1914,6 +1963,20 @@
         
         MAX_SURFACES: 10
     };
+
+    // Colours the user can change in Display Options
+    const DISPLAY_COLOR_DEFAULTS = {
+        line: CONFIG.COLORS.LINE_DEFAULT,
+        wallLabel: CONFIG.COLORS.LABEL,
+        cutLabel: '#cc0000',
+        angle: '#8b6914'
+    };
+    const DISPLAY_COLOR_NAMES = [
+        ['line', 'Surface lines'],
+        ['wallLabel', 'Wall length labels'],
+        ['cutLabel', 'Cut measurements'],
+        ['angle', 'Angles']
+    ];
 
     const Mode = {
         IDLE: 'IDLE',
@@ -2290,6 +2353,17 @@
             this.mode = Mode.ADD_LINE;
             this.distanceToolEnabled = false;
             this.unitMode = 'decimal2';
+            this.labelScale = 1;   // size of measurement and angle labels (1 = normal); a view preference, remembered on this device
+            try {
+                const saved = parseFloat(localStorage.getItem('tilePlanner_labelScale'));
+                if (saved >= 0.5 && saved <= 3) this.labelScale = saved;
+            } catch (e) { /* storage unavailable: use the default */ }
+            // Colours of lines and labels; also view preferences remembered on this device
+            this.displayColors = { ...DISPLAY_COLOR_DEFAULTS };
+            try {
+                const saved = JSON.parse(localStorage.getItem('tilePlanner_colors') || '{}');
+                for (const key of Object.keys(DISPLAY_COLOR_DEFAULTS)) if (/^#[0-9a-f]{6}$/i.test(saved[key])) this.displayColors[key] = saved[key];
+            } catch (e) { /* ignore */ }
             this.currentTab = 'tileLayout';
             this.snapMode = 'auto';
             
@@ -2462,7 +2536,53 @@
                 this.redraw();
             });
             
+            // Display Options: open/close, colour pickers
+            [['btnToggleDisplay', 'displayCollapsible'], ['btnToggleDisplayMobile', 'displayCollapsibleMobile']].forEach(([btnId, secId]) => {
+                document.getElementById(btnId).addEventListener('click', () => {
+                    const section = document.getElementById(secId), btn = document.getElementById(btnId);
+                    const open = section.style.display === 'none';
+                    section.style.display = open ? 'block' : 'none';
+                    btn.setAttribute('aria-expanded', String(open));
+                });
+            });
+            const colorBoxes = [];
+            document.querySelectorAll('.display-colors').forEach(box => {
+                DISPLAY_COLOR_NAMES.forEach(([key, name]) => {
+                    const label = document.createElement('label'); label.textContent = name;
+                    const input = document.createElement('input'); input.type = 'color'; input.dataset.key = key; input.setAttribute('aria-label', name);
+                    box.append(label, input); colorBoxes.push(input);
+                });
+                const reset = document.createElement('button'); reset.type = 'button'; reset.textContent = 'Reset colours';
+                reset.addEventListener('click', () => { this.displayColors = { ...DISPLAY_COLOR_DEFAULTS }; showColors(); saveColors(); this.redraw(); });
+                box.appendChild(reset);
+            });
+            const showColors = () => colorBoxes.forEach(input => { input.value = this.displayColors[input.dataset.key]; });
+            const saveColors = () => { try { localStorage.setItem('tilePlanner_colors', JSON.stringify(this.displayColors)); } catch (err) { /* ignore */ } };
+            colorBoxes.forEach(input => input.addEventListener('input', () => {
+                this.displayColors[input.dataset.key] = input.value;
+                showColors(); saveColors(); this.redraw();
+            }));
+            showColors();
+
             // Unit selector
+            // Label size: the desktop and phone Display Options each have a select; they always show the same choice.
+            const labelSizeSelects = [...document.querySelectorAll('.label-size-select')];
+            const showLabelScale = () => labelSizeSelects.forEach(sel => {
+                // a remembered size that is not one of the presets gets its own entry
+                if (![...sel.options].some(o => parseFloat(o.value) === this.labelScale)) {
+                    const o = document.createElement('option'); o.value = String(this.labelScale); o.textContent = 'Custom'; sel.appendChild(o);
+                }
+                sel.value = String(this.labelScale);
+            });
+            showLabelScale();
+            labelSizeSelects.forEach(sel => sel.addEventListener('change', (e) => {
+                const v = parseFloat(e.target.value);
+                if (!(v >= 0.5 && v <= 3)) return;
+                this.labelScale = v;
+                showLabelScale();
+                try { localStorage.setItem('tilePlanner_labelScale', String(v)); } catch (err) { /* ignore */ }
+                this.redraw();
+            }));
             document.getElementById('unitMode').addEventListener('change', () => {
                 document.getElementById('unitModeMobile').value = document.getElementById('unitMode').value;
                 this.changeUnits();
@@ -2645,10 +2765,10 @@
                 const btn = document.getElementById('btnToggleGrout');
                 if (section.style.display === 'none') {
                     section.style.display = 'block';
-                    btn.textContent = 'Grout Estimation \u25B2';
+                    btn.setAttribute('aria-expanded', 'true');
                 } else {
                     section.style.display = 'none';
-                    btn.textContent = 'Grout Estimation \u25BC';
+                    btn.setAttribute('aria-expanded', 'false');
                 }
             });
             document.getElementById('tileDepth').addEventListener('input', () => {
@@ -2686,10 +2806,10 @@
                 const btn = document.getElementById('btnToggleSelection');
                 if (section.style.display === 'none') {
                     section.style.display = 'block';
-                    btn.textContent = 'Surfaces \u25B2';
+                    btn.setAttribute('aria-expanded', 'true');
                 } else {
                     section.style.display = 'none';
-                    btn.textContent = 'Surfaces \u25BC';
+                    btn.setAttribute('aria-expanded', 'false');
                 }
             });
             document.getElementById('btnClearSurfaceSelectionMobile').addEventListener('click', () => this.clearSurfaceSelection());
@@ -2698,10 +2818,10 @@
                 const btn = document.getElementById('btnToggleTileEstimate');
                 if (section.style.display === 'none') {
                     section.style.display = 'block';
-                    btn.textContent = 'Tile Estimate (Beta) \u25B2';
+                    btn.setAttribute('aria-expanded', 'true');
                 } else {
                     section.style.display = 'none';
-                    btn.textContent = 'Tile Estimate (Beta) \u25BC';
+                    btn.setAttribute('aria-expanded', 'false');
                 }
             });
             document.getElementById('showCutMeasurements').addEventListener('change', (e) => {
@@ -4894,6 +5014,7 @@
 
         redraw() {
             const ctx = this.ctx;
+            this._labelRects = [];
             ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
             ctx.save();
             ctx.translate(this.panX, this.panY);
@@ -5208,17 +5329,38 @@
         
         drawMeasurementLabel(ctx, text, midpoint, angle) {
             ctx.save();
-            ctx.translate(midpoint.x, midpoint.y);
-            ctx.scale(1 / this.zoom, 1 / this.zoom);
             let displayAngle = angle;
             if (displayAngle > Math.PI / 2) displayAngle -= Math.PI;
             if (displayAngle < -Math.PI / 2) displayAngle += Math.PI;
-            ctx.rotate(displayAngle);
-            ctx.font = 'bold 10px sans-serif';
+            const ls = this.labelScale;
+            ctx.font = `bold ${10 * ls}px sans-serif`;
             const metrics = ctx.measureText(text);
+            const boxW = metrics.width + 4 * ls, boxH = 15 * ls;
+            // Larger labels crowd each other on short walls: slide a label sideways off the ones already drawn this frame.
+            let shift = 0, slide = 0;
+            if (ls > 1) {
+                const cx = midpoint.x * this.zoom + this.panX, cy = midpoint.y * this.zoom + this.panY;
+                const cos = Math.cos(displayAngle), sin = Math.sin(displayAngle);
+                const halfW = (Math.abs(cos) * boxW + Math.abs(sin) * boxH) / 2, halfH = (Math.abs(sin) * boxW + Math.abs(cos) * boxH) / 2;
+                const rects = this._labelRects || (this._labelRects = []);
+                const at = (along, perp) => ({ x: cx + cos * along - sin * perp, y: cy + sin * along + cos * perp });
+                const free = (pt) => !rects.some(r => Math.abs(r.x - pt.x) < r.hw + halfW && Math.abs(r.y - pt.y) < r.hh + halfH);
+                const tries = [];
+                for (const a of [0, 0.5, -0.5, 1, -1]) for (const k of [0, 1, -1, 2, -2]) tries.push([a * boxW, k * boxH]);
+                tries.sort((u, v) => Math.hypot(u[0], u[1]) - Math.hypot(v[0], v[1]));
+                for (const [a, k] of tries) {
+                    if (free(at(a, k))) { slide = a; shift = k; break; }
+                }
+                const pt = at(slide, shift);
+                rects.push({ x: pt.x, y: pt.y, hw: halfW, hh: halfH });
+            }
+            ctx.translate(midpoint.x, midpoint.y);
+            ctx.scale(1 / this.zoom, 1 / this.zoom);
+            ctx.rotate(displayAngle);
+            ctx.translate(slide, shift);
             ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-            ctx.fillRect(-metrics.width/2 - 2, -9, metrics.width + 4, 15);
-            ctx.fillStyle = '#c00';
+            ctx.fillRect(-metrics.width/2 - 2 * ls, -9 * ls, boxW, boxH);
+            ctx.fillStyle = this.displayColors.cutLabel;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(text, 0, 0);
@@ -5443,7 +5585,7 @@
                             // Draw dotted tile-edge reference line
                             const refLen = 20 / this.zoom;
                             ctx.save();
-                            ctx.strokeStyle = '#8B6914';
+                            ctx.strokeStyle = this.displayColors.angle;
                             ctx.lineWidth = 1 / this.zoom;
                             ctx.setLineDash([3 / this.zoom, 3 / this.zoom]);
                             ctx.beginPath();
@@ -5454,7 +5596,7 @@
                             
                             // Draw arc
                             const arcRadius = 16 / this.zoom;
-                            ctx.strokeStyle = '#8B6914';
+                            ctx.strokeStyle = this.displayColors.angle;
                             ctx.lineWidth = 1.5 / this.zoom;
                             ctx.beginPath();
                             ctx.arc(inter.x, inter.y, arcRadius, bestTeAngle, bestTeAngle + arcDiff, arcDiff < 0);
@@ -5462,18 +5604,19 @@
                             
                             // Label at bisector
                             const bisect = bestTeAngle + arcDiff / 2;
-                            const labelR = arcRadius + 14 / this.zoom;
+                            const labelR = arcRadius + 14 * this.labelScale / this.zoom;
                             const lx = inter.x + Math.cos(bisect) * labelR;
                             const ly = inter.y + Math.sin(bisect) * labelR;
                             const labelText = angleDeg.toFixed(1) + '\u00B0';
                             
                             ctx.translate(lx, ly);
                             ctx.scale(1 / this.zoom, 1 / this.zoom);
-                            ctx.font = 'bold 10px sans-serif';
+                            const als = this.labelScale;
+                            ctx.font = `bold ${10 * als}px sans-serif`;
                             const metrics = ctx.measureText(labelText);
                             ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-                            ctx.fillRect(-metrics.width / 2 - 2, -9, metrics.width + 4, 15);
-                            ctx.fillStyle = '#8B6914';
+                            ctx.fillRect(-metrics.width / 2 - 2 * als, -9 * als, metrics.width + 4 * als, 15 * als);
+                            ctx.fillStyle = this.displayColors.angle;
                             ctx.textAlign = 'center';
                             ctx.textBaseline = 'middle';
                             ctx.fillText(labelText, 0, 0);
@@ -5560,8 +5703,8 @@
             ctx.translate(worldX, worldY);
             ctx.scale(1 / this.zoom, 1 / this.zoom);
             ctx.fillStyle = color;
-            ctx.font = '12px sans-serif';
-            ctx.fillText(text, offsetX, offsetY);
+            ctx.font = `${12 * this.labelScale}px sans-serif`;
+            ctx.fillText(text, offsetX * this.labelScale, offsetY * this.labelScale);
             ctx.restore();
         }
 
@@ -5642,13 +5785,13 @@
                     ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
                 }
                 
-                ctx.strokeStyle = isSelected ? CONFIG.COLORS.LINE_SELECTED : (dimLines ? CONFIG.COLORS.LINE_DIMMED : CONFIG.COLORS.LINE_DEFAULT);
+                ctx.strokeStyle = isSelected ? CONFIG.COLORS.LINE_SELECTED : (dimLines ? CONFIG.COLORS.LINE_DIMMED : this.displayColors.line);
                 ctx.lineWidth = (isSelected ? 3 : baseLineWidth) / this.zoom;
                 ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
                 
                 if (!isFinalizeMode) {
                     const midX = (p1.x + p2.x) / 2, midY = (p1.y + p2.y) / 2;
-                    this.drawLabel(formatMeasurement(distance(p1, p2) / CONFIG.PIXELS_PER_INCH, this.unitMode), midX, midY, dimLines ? CONFIG.COLORS.LABEL_DIMMED : CONFIG.COLORS.LABEL);
+                    this.drawLabel(formatMeasurement(distance(p1, p2) / CONFIG.PIXELS_PER_INCH, this.unitMode), midX, midY, dimLines ? CONFIG.COLORS.LABEL_DIMMED : this.displayColors.wallLabel);
                 }
             });
             
@@ -5678,7 +5821,7 @@
                 ctx.setLineDash([]);
                 
                 const midX = (p1.x + p2.x) / 2, midY = (p1.y + p2.y) / 2;
-                this.drawLabel(formatMeasurement(distance(p1, p2) / CONFIG.PIXELS_PER_INCH, this.unitMode), midX, midY, 'blue');
+                this.drawLabel(formatMeasurement(distance(p1, p2) / CONFIG.PIXELS_PER_INCH, this.unitMode), midX, midY, this.displayColors.wallLabel);
             }
             
             if (this.mode === Mode.IDLE && this.isDragging && this.selectedVertex !== null) {

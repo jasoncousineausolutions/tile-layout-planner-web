@@ -140,6 +140,49 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['ph
   });
 
   await step('no errors during all of the above', async () => expect(page.errors.length === 0, page.errors.join(' | ')));
+
+  await step('display options: opens and closes, label size and colours apply, and are remembered', async () => {
+    // record every font and fill colour the canvas is asked to use
+    await page.evaluate(() => {
+      window.__fonts = new Set(); window.__fills = new Set();
+      const proto = CanvasRenderingContext2D.prototype;
+      for (const [prop, set] of [['font', window.__fonts], ['fillStyle', window.__fills]]) {
+        const d = Object.getOwnPropertyDescriptor(proto, prop);
+        Object.defineProperty(proto, prop, { set(v) { set.add(String(v)); d.set.call(this, v); }, get() { return d.get.call(this); } });
+      }
+    });
+    await page.click('.tab[data-tab="finalize"]'); await page.waitForTimeout(250);
+    await page.evaluate(() => { if (app.selectedSurfaces.length === 0) app.toggleSurfaceSelection(0); const c = document.getElementById('showAngles'); c.checked = true; c.dispatchEvent(new Event('change', { bubbles: true })); });
+    // desktop: the section is at the bottom of the side panel; phone: it is in the Tile Layout tab
+    const phone = await page.evaluate(() => innerWidth <= 800);
+    const [btn, sec] = phone ? ['#btnToggleDisplayMobile', '#displayCollapsibleMobile'] : ['#btnToggleDisplay', '#displayCollapsible'];
+    const other = phone ? '#displayCollapsible' : '#displayCollapsibleMobile';
+    if (phone) { await page.click('.tab[data-tab="tileLayout"]'); await page.waitForTimeout(250); }
+    expect(!(await page.isVisible(sec)), 'Display Options should start closed');
+    await page.click(btn);
+    expect(await page.isVisible(sec), 'Display Options did not open');
+    expect((await page.getAttribute(btn, 'aria-expanded')) === 'true', 'aria-expanded not set when open');
+    expect(await page.isVisible(sec + ' select'), 'Units not inside Display Options');
+    await page.evaluate((q) => { const el = document.querySelector(q + ' .label-size-select'); el.value = '1.8'; el.dispatchEvent(new Event('change', { bubbles: true })); }, sec);
+    expect((await page.evaluate((q) => document.querySelector(q + ' .label-size-select').value, other)) === '1.8', 'the other select did not follow');
+    await page.evaluate((q) => { const el = document.querySelector(q + ' input[data-key="cutLabel"]'); el.value = '#00aa00'; el.dispatchEvent(new Event('input', { bubbles: true })); }, sec);
+    await page.click('.tab[data-tab="finalize"]'); await page.waitForTimeout(100);
+    await page.waitForTimeout(250);
+    const fonts = await page.evaluate(() => [...window.__fonts]);
+    expect(fonts.includes('bold 18px sans-serif'), 'cut-measurement labels are not 1.8x bigger: ' + fonts.join(' | '));
+    expect((await page.evaluate(() => [...window.__fills])).includes('#00aa00'), 'cut-measurement colour was not used');
+    await page.click('.tab[data-tab="surfaceDesign"]'); await page.waitForTimeout(250);
+    expect((await page.evaluate(() => [...window.__fonts])).includes('21.6px sans-serif'), 'wall-length labels are not 1.8x bigger');
+    await page.reload(); await page.waitForTimeout(400);
+    expect((await page.evaluate(() => document.querySelector('.label-size-select').value)) === '1.8', 'size not remembered after a reload');
+    expect((await page.evaluate(() => app.displayColors.cutLabel)) === '#00aa00', 'colour not remembered after a reload');
+    if (phone) { await page.click('.tab[data-tab="tileLayout"]'); await page.waitForTimeout(250); }
+    await page.click(btn);
+    await page.click(sec + ' .display-colors button');
+    expect((await page.evaluate(() => app.displayColors.cutLabel)) === '#cc0000', 'Reset colours did not restore the default');
+    await page.evaluate(() => { const el = document.querySelector('.label-size-select'); el.value = '1'; el.dispatchEvent(new Event('change', { bubbles: true })); });
+    expect(page.errors.length === 0, page.errors.join(' | '));
+  });
   await page.context().close();
 
   // ---------- sketch import ----------

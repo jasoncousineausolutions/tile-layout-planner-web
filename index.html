@@ -1993,7 +1993,7 @@
                 const startRow = Math.floor(minY / effH) - 1, endRow = Math.ceil(maxY / effH) + 1;
                 const tiles = [];
                 for (let row = startRow; row <= endRow; row++) {
-                    const rowOffset = (row % 2) * bond * effW;
+                    const rowOffset = (((row % 2) + 2) % 2) * bond * effW;   // JS gives -1 for odd negative rows; they must shift like the positive ones
                     for (let col = startCol; col <= endCol; col++) {
                         tiles.push({ x: col * effW + rowOffset, y: row * effH, w: tileW, h: tileH });
                     }

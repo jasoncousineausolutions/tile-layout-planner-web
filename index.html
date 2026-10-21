@@ -1141,6 +1141,14 @@
             padding-top: var(--space-xs);
         }
         
+        /* A menu opened from a toggle button: indented under it with a rule down the side */
+        .menu-group { margin-bottom: 10px; }
+        .submenu {
+            margin: var(--space-xs) 0 0 6px;
+            padding: var(--space-xs) 0 0 var(--space-sm);
+            border-left: 3px solid var(--steel-blue);
+        }
+        
         /* Mobile links footer (hidden on desktop) */
         .mobile-links-footer {
             display: none;
@@ -1743,7 +1751,7 @@
                 
                 <div class="mobile-units-section">
                     <button id="btnToggleDisplayMobile" class="toggle-section-btn" aria-expanded="false">Display Options</button>
-                    <div id="displayCollapsibleMobile" class="collapsible-section" style="display: none;">
+                    <div id="displayCollapsibleMobile" class="collapsible-section submenu" style="display: none;">
                         <div class="input-group">
                             <label for="unitModeMobile">Units:</label>
                             <select id="unitModeMobile">
@@ -1901,12 +1909,14 @@
             
             <div id="mobileLinks" class="mobile-links-footer">
                 <button id="btnRecenterMobile" style="width: 100%; margin-bottom: 8px;">Re-center View</button>
-                <button id="btnSketchMobile" style="width: 100%; margin-bottom: 8px;">Import from Sketch (Beta)</button>
-                <button id="btnToggleFileMobile" class="toggle-section-btn" aria-expanded="false" style="margin-top: 0; margin-bottom: 8px;">File</button>
-                <div id="fileCollapsibleMobile" class="collapsible-section" style="display: none;">
+                <div class="menu-group">
+                <button id="btnToggleFileMobile" class="toggle-section-btn" aria-expanded="false" style="margin-top: 0;">Import &amp; Export</button>
+                <div id="fileCollapsibleMobile" class="collapsible-section submenu" style="display: none;">
+                    <button id="btnSketchMobile" style="width: 100%; margin-bottom: 8px;">Import from Sketch (Beta)</button>
                     <button id="btnSaveLoadMobile" style="width: 100%; margin-bottom: 8px;">Save / Load Design</button>
                     <button id="btnTileListMobile" style="width: 100%; margin-bottom: 8px;">Tile List</button>
                     <button id="btnPrintMobile" style="width: 100%; margin-bottom: 8px;">Save Layout as Image</button>
+                </div>
                 </div>
                 <div class="link-buttons">
                     <a href="https://www.jasoncousineau.com/free-tools/tile-planner#instructions" target="_blank" class="link-btn">Help</a>
@@ -1918,17 +1928,19 @@
         <div id="unitsSection">
             <button id="btnCancel" class="danger hidden">Cancel</button>
             <button id="btnRecenter" style="width: 100%; margin-bottom: 10px;">Re-center View</button>
-            <button id="btnSketch" style="width: 100%; margin-bottom: 10px;">Import from Sketch (Beta)</button>
-            <button id="btnToggleFile" class="toggle-section-btn" aria-expanded="false" style="margin-top: 0; margin-bottom: 10px;">File</button>
-            <div id="fileCollapsible" class="collapsible-section" style="display: none;">
+            <div class="menu-group">
+            <button id="btnToggleFile" class="toggle-section-btn" aria-expanded="false" style="margin-top: 0;">Import &amp; Export</button>
+            <div id="fileCollapsible" class="collapsible-section submenu" style="display: none;">
+                <button id="btnSketch" style="width: 100%; margin-bottom: 10px;">Import from Sketch (Beta)</button>
                 <button id="btnSaveLoad" style="width: 100%; margin-bottom: 10px;">Save / Load Design</button>
                 <button id="btnTileList" style="width: 100%; margin-bottom: 10px;">Tile List</button>
                 <button id="btnPrint" style="width: 100%; margin-bottom: 10px;">Print Layout / Save as PDF</button>
                 <button id="btnSaveImage" style="width: 100%; margin-bottom: 10px;">Save Layout as Image</button>
             </div>
+            </div>
             <div id="unitsRow">
                 <button id="btnToggleDisplay" class="toggle-section-btn" aria-expanded="false" style="margin-top: 0;">Display Options</button>
-                <div id="displayCollapsible" class="collapsible-section" style="display: none;">
+                <div id="displayCollapsible" class="collapsible-section submenu" style="display: none;">
                     <div class="input-group">
                         <label for="unitMode">Units:</label>
                         <select id="unitMode">
@@ -2824,12 +2836,17 @@
             });
             
             // Display Options: open/close, colour pickers
-            [['btnToggleDisplay', 'displayCollapsible'], ['btnToggleDisplayMobile', 'displayCollapsibleMobile'], ['btnToggleFile', 'fileCollapsible'], ['btnToggleFileMobile', 'fileCollapsibleMobile']].forEach(([btnId, secId]) => {
+            // The bottom menus open one at a time
+            const menus = [['btnToggleDisplay', 'displayCollapsible'], ['btnToggleDisplayMobile', 'displayCollapsibleMobile'], ['btnToggleFile', 'fileCollapsible'], ['btnToggleFileMobile', 'fileCollapsibleMobile']];
+            const setMenu = (btnId, secId, open) => {
+                document.getElementById(secId).style.display = open ? 'block' : 'none';
+                document.getElementById(btnId).setAttribute('aria-expanded', String(open));
+            };
+            menus.forEach(([btnId, secId]) => {
                 document.getElementById(btnId).addEventListener('click', () => {
-                    const section = document.getElementById(secId), btn = document.getElementById(btnId);
-                    const open = section.style.display === 'none';
-                    section.style.display = open ? 'block' : 'none';
-                    btn.setAttribute('aria-expanded', String(open));
+                    const open = document.getElementById(secId).style.display === 'none';
+                    menus.forEach(([b2, s2]) => setMenu(b2, s2, false));
+                    if (open) setMenu(btnId, secId, true);
                 });
             });
             const colorBoxes = [];
@@ -4754,12 +4771,13 @@
             c.font = labelFont; c.fillStyle = '#2E3440'; c.textAlign = 'center'; c.textBaseline = 'middle';
             const rings = [pts, ...group.holes];
             const placed = [];   // label boxes already on this piece, so a label can step clear of them
+            const keepInCard = (pt, tw, th) => ({ x: Math.min(Math.max(pt.x, bx + tw / 2), bx + bw - tw / 2), y: Math.min(Math.max(pt.y, by + th / 2), by + bh - th / 2) });
             for (const r of rings) {
                 const rs = ringArea(r) >= 0 ? 1 : -1;
                 r.forEach((p, i) => {
                     const q = r[(i + 1) % r.length];
                     const len = distance(p, q);
-                    if (len < 0.05) return;
+                    if (len < 0.2) return;   // too small to measure or cut; a label would only crowd the others
                     const a = at(p), b = at(q);
                     const dx = b.x - a.x, dy = b.y - a.y, dl = Math.hypot(dx, dy) || 1;
                     const nx = rs * dy / dl, ny = -rs * dx / dl;   // points out of the piece (into the cutout for a hole)
@@ -4769,37 +4787,61 @@
                     const spot = () => ({ x: (a.x + b.x) / 2 + nx * off, y: (a.y + b.y) / 2 + ny * off });
                     const clash = (q) => placed.some(r2 => Math.abs(r2.x - q.x) < (r2.w + tw) / 2 && Math.abs(r2.y - q.y) < th);
                     for (let tries = 0; tries < 4 && clash(spot()); tries++) off += th;
-                    const where = spot();
+                    const where = keepInCard(spot(), tw, th);
                     placed.push({ x: where.x, y: where.y, w: tw });
                     c.fillText(text, where.x, where.y);
                 });
             }
-            // corners that are not square
+            // Corners that are not square get their angle, inside the piece when the label fits and just outside it when not.
+            // A reflex corner is the same angle seen from the other side, so it gets no label.
+            const outline = pts.map(at);
+            const within = (x, y) => {
+                let hit = false;
+                for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
+                    const a = outline[i], b = outline[j];
+                    if ((a.y > y) !== (b.y > y) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x) hit = !hit;
+                }
+                return hit;
+            };
+            // each distinct angle is labeled once per piece, at a corner where the label fits inside the piece if there is one
+            const corners = [];
             pts.forEach((p, i) => {
                 const prev = pts[(i + pts.length - 1) % pts.length], next = pts[(i + 1) % pts.length];
                 const e1 = { x: p.x - prev.x, y: p.y - prev.y }, e2 = { x: next.x - p.x, y: next.y - p.y };
                 const turn = Math.atan2(e1.x * e2.y - e1.y * e2.x, e1.x * e2.x + e1.y * e2.y);
                 const interior = (Math.PI - sign * turn) * 180 / Math.PI;
-                if ([90, 180, 270].some(a => Math.abs(interior - a) < 1.5)) return;   // square corners need no label
+                if (interior > 180 || Math.abs(interior - 90) < 1.5) return;
                 const u = { x: prev.x - p.x, y: prev.y - p.y }, v = { x: next.x - p.x, y: next.y - p.y };
                 const ul = Math.hypot(u.x, u.y), vl = Math.hypot(v.x, v.y);
                 let bx2 = u.x / ul + v.x / vl, by2 = u.y / ul + v.y / vl;
                 const bl = Math.hypot(bx2, by2);
                 if (bl < 0.2) return;
-                const dir = sign * turn > 0 ? 1 : -1;   // a corner that turns the other way is reflex: the bisector points outside
-                bx2 = dir * bx2 / bl; by2 = dir * by2 / bl;
-                const q = at(p);
-                const text = interior.toFixed(1).replace(/\.0$/, '') + '°';
-                c.fillStyle = '#8B6914'; c.font = 'bold 22px sans-serif';
-                const tw = c.measureText(text).width;
-                let reach = 1;
-                const spot = () => ({ x: q.x + bx2 * 58 * reach, y: q.y + by2 * 40 * reach });
-                for (let tries = 0; tries < 4 && placed.some(r2 => Math.abs(r2.x - spot().x) < (r2.w + tw) / 2 && Math.abs(r2.y - spot().y) < 26); tries++) reach += 0.5;
-                const where = spot();
-                placed.push({ x: where.x, y: where.y, w: tw });
-                c.fillText(text, where.x, where.y);
-                c.fillStyle = '#2E3440'; c.font = labelFont;
+                corners.push({ q: at(p), bx: bx2 / bl, by: by2 / bl, text: interior.toFixed(1).replace(/\.0$/, '') + '\u00B0' });   // bx, by point into the piece
             });
+            c.font = 'bold 22px sans-serif';
+            const clearOf = (x, y, tw) => !placed.some(r2 => Math.abs(r2.x - x) < (r2.w + tw) / 2 && Math.abs(r2.y - y) < 26);
+            const spotFor = (k) => {
+                const tw = c.measureText(k.text).width, th = 22;
+                const boxInside = (x, y) => [[-1, -1], [1, -1], [-1, 1], [1, 1]].every(([sx, sy]) => within(x + sx * tw / 2, y + sy * th / 2));
+                for (const d of [28, 44, 62, 84]) {
+                    const x = k.q.x + k.bx * d, y = k.q.y + k.by * d;
+                    if (boxInside(x, y) && clearOf(x, y, tw)) return { x, y, tw, inside: true };
+                }
+                for (const d of [36, 58, 82]) {
+                    const x = k.q.x - k.bx * d, y = k.q.y - k.by * d;
+                    if (clearOf(x, y, tw)) return { x, y, tw, inside: false };
+                }
+                return { x: k.q.x - k.bx * 36, y: k.q.y - k.by * 36, tw, inside: false };
+            };
+            for (const text of [...new Set(corners.map(k => k.text))]) {
+                const options = corners.filter(k => k.text === text).map(spotFor);
+                const best = options.find(o => o.inside) || options[0];
+                const where = keepInCard(best, best.tw, 22);
+                placed.push({ x: where.x, y: where.y, w: best.tw });
+                c.fillStyle = '#8B6914';
+                c.fillText(text, where.x, where.y);
+            }
+            c.fillStyle = '#2E3440'; c.font = labelFont;
             c.textBaseline = 'alphabetic'; c.textAlign = 'left';
         }
 

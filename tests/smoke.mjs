@@ -183,16 +183,28 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['ph
     await page.evaluate(() => { const el = document.querySelector('.label-size-select'); el.value = '1'; el.dispatchEvent(new Event('change', { bubbles: true })); });
     expect(page.errors.length === 0, page.errors.join(' | '));
   });
-  await step('file section and tile list: opens, lists the cuts, offers the right buttons, saves pages', async () => {
+  await step('import & export menu and tile list: opens, lists the cuts, offers the right buttons, saves pages', async () => {
     const phone = await page.evaluate(() => innerWidth <= 800);
     const [toggle, section, listBtn] = phone ? ['#btnToggleFileMobile', '#fileCollapsibleMobile', '#btnTileListMobile'] : ['#btnToggleFile', '#fileCollapsible', '#btnTileList'];
     // a known room with cuts (the earlier steps reload the page, which clears the drawing)
     await page.evaluate(() => { const k = 10.8, p = (x, y) => ({ x: x * k, y: y * k }); app.importDesign(JSON.stringify({ format: 'tile-planner-design', version: '1.1', appState: { unitMode: 'decimal2', currentTab: 'tileLayout', zoom: 1, panX: 0, panY: 0 }, tileLayout: { tileWidthInches: 12, tileHeightInches: 12, groutWidthInches: 0.125, tileDepthInches: 0.5, groutType: 'unknown', bondOffset: 0, rotationDegrees: 0, offsetXInches: 0, offsetYInches: 0 }, surface: { vertices: [p(0, 0), p(50, 0), p(50, 38), p(0, 38)], lines: [[0, 1], [1, 2], [2, 3], [3, 0]] } })); });
     await page.click('.tab[data-tab="finalize"]'); await page.waitForTimeout(250);
     await page.evaluate(() => { if (app.selectedSurfaces.length === 0) app.toggleSurfaceSelection(0); });
-    expect(!(await page.isVisible(section)), 'File section should start closed');
+    expect(!(await page.isVisible(section)), 'Import & Export should start closed');
+    const display = phone ? '#displayCollapsibleMobile' : '#displayCollapsible', displayToggle = phone ? '#btnToggleDisplayMobile' : '#btnToggleDisplay';
+    // the phone's Display Options live in the Tile Layout tab; the Import & Export menu is always at the bottom
+    if (phone) { await page.click('.tab[data-tab="tileLayout"]'); await page.waitForTimeout(250); }
+    if (await page.isVisible(display)) await page.click(displayToggle);   // start from closed
+    await page.click(displayToggle);
+    expect(await page.isVisible(display), 'Display Options did not open');
     await page.click(toggle);
-    expect(await page.isVisible(section), 'File section did not open');
+    expect(!(await page.isVisible(display)), 'opening Import & Export should close Display Options');
+    expect(await page.isVisible(section), 'Import & Export section did not open');
+    expect(await page.isVisible(phone ? '#btnSketchMobile' : '#btnSketch'), 'Import from Sketch is not in Import & Export');
+    await page.click(displayToggle);
+    expect(!(await page.isVisible(section)), 'opening Display Options should close Import & Export');
+    await page.click(toggle);
+    if (phone) { await page.click('.tab[data-tab="finalize"]'); await page.waitForTimeout(250); }
     expect(await page.isVisible(listBtn), 'Tile List button is not in the File section');
     await page.click(listBtn); await page.waitForSelector('#tileListPages img', { state: 'visible' });
     const info = await page.evaluate(() => ({ pages: document.querySelectorAll('#tileListPages img').length, w: document.querySelector('#tileListPages img').naturalWidth, h: document.querySelector('#tileListPages img').naturalHeight, save: getComputedStyle(document.getElementById('tileListSave')).display, print: getComputedStyle(document.getElementById('tileListPrint')).display }));

@@ -2130,17 +2130,28 @@
                 const prev = pts[(i + pts.length - 1) % pts.length], cur = pts[i], next = pts[(i + 1) % pts.length];
                 const len = distance(prev, next);
                 const off = len < eps ? distance(prev, cur) : Math.abs((next.x - prev.x) * (prev.y - cur.y) - (prev.x - cur.x) * (next.y - prev.y)) / len;
-                if (distance(prev, cur) < eps || off < eps) { pts.splice(i, 1); changed = true; break; }
+                if (distance(prev, cur) < eps || off < eps) {
+                    prev.u = prev.u && cur.u;   // the merged edge counts as uncut only if both parts were
+                    pts.splice(i, 1); changed = true; break;
+                }
             }
         }
         return pts;
     }
 
+    // Points carry `u`: true when the edge from this point to the next is an uncut tile edge.
+    // Reversing a ring moves each edge flag onto the point that now starts that edge.
+    function reverseRing(pts) {
+        const rev = pts.slice().reverse();
+        const flags = rev.map((_, j) => rev[(j + 1) % rev.length].u);
+        return rev.map((p, j) => ({ x: p.x, y: p.y, u: flags[j] }));
+    }
+
     // The ring moved to the corner of its bounding box and wound the same way every time.
     function normalizeRing(ring) {
-        const pts = ringArea(ring) < 0 ? ring.slice().reverse() : ring.slice();
+        const pts = ringArea(ring) < 0 ? reverseRing(ring) : ring.slice();
         const minX = Math.min(...pts.map(p => p.x)), minY = Math.min(...pts.map(p => p.y));
-        return pts.map(p => ({ x: p.x - minX, y: p.y - minY }));
+        return pts.map(p => ({ x: p.x - minX, y: p.y - minY, u: p.u }));
     }
 
     // Every way of turning or flipping a normalized ring, each starting at a different corner.
@@ -2150,11 +2161,11 @@
             let pts = ring.map(p => {
                 let x = p.x * flip, y = p.y;
                 for (let k = 0; k < turn; k++) [x, y] = [-y, x];
-                return { x, y };
+                return { x, y, u: p.u };
             });
-            if (flip < 0) pts.reverse();
+            if (flip < 0) pts = reverseRing(pts);
             const minX = Math.min(...pts.map(p => p.x)), minY = Math.min(...pts.map(p => p.y));
-            pts = pts.map(p => ({ x: p.x - minX, y: p.y - minY }));
+            pts = pts.map(p => ({ x: p.x - minX, y: p.y - minY, u: p.u }));
             for (let start = 0; start < pts.length; start++) out.push(pts.slice(start).concat(pts.slice(0, start)));
         }
         return out;
@@ -2163,10 +2174,10 @@
     function ringsMatch(a, b) {
         if (a.length !== b.length) return false;
         const tol = CUT_MATCH_TOLERANCE_IN;
-        return ringVariants(b).some(v => v.every((p, i) => Math.abs(p.x - a[i].x) <= tol && Math.abs(p.y - a[i].y) <= tol));
+        return ringVariants(b).some(v => v.every((p, i) => Math.abs(p.x - a[i].x) <= tol && Math.abs(p.y - a[i].y) <= tol && p.u === a[i].u));
     }
 
-    // Counts a piece against the matching group, or starts a new one. Pieces with a hole in them are never grouped.
+    // Counts a piece against the matching group (same shape, same uncut edges), or starts a new one. Pieces with a hole in them are never grouped.
     function addCutPiece(groups, ring, holes) {
         const shape = normalizeRing(ring);
         if (!holes.length) {
@@ -4608,7 +4619,10 @@
                         for (const hole of holes) { if (!result.length) break; result = polygonClipping.difference(result, [hole]); }
                     } catch (e) { continue; }
                     for (const polygon of result) {
-                        const ring = simplifyRing(ringPoints(polygon[0]));
+                        const onSide = (a, b) => [[a.x, b.x, x0], [a.x, b.x, x1], [a.y, b.y, y0], [a.y, b.y, y1]].some(([u, v, side]) => Math.abs(u - side) < 0.02 && Math.abs(v - side) < 0.02);
+                        const rough = ringPoints(polygon[0]);
+                        rough.forEach((pt, i) => { pt.u = onSide(pt, rough[(i + 1) % rough.length]); });   // an edge along a side of the tile is a factory edge; any other edge is a cut
+                        const ring = simplifyRing(rough);
                         const cutouts = polygon.slice(1).map(r => simplifyRing(ringPoints(r)));
                         if (ring.length < 3) continue;
                         const area = Math.abs(ringArea(ring)) - cutouts.reduce((sum, r) => sum + Math.abs(ringArea(r)), 0);
@@ -4725,7 +4739,16 @@
             c.beginPath(); path(pts);
             for (const h of group.holes) path(h);
             c.fillStyle = FILL_PIECE; c.fill('evenodd');
-            c.strokeStyle = '#2E3440'; c.lineWidth = 3; c.stroke();
+            // uncut tile edges are solid; cut edges are dotted
+            c.strokeStyle = '#000'; c.lineWidth = 3; c.lineCap = 'round';
+            const edge = (p, q, uncut) => {
+                const a = at(p), b = at(q);
+                c.setLineDash(uncut ? [] : [0.1, 7]);
+                c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
+            };
+            pts.forEach((p, i) => edge(p, pts[(i + 1) % pts.length], p.u));
+            for (const h of group.holes) h.forEach((p, i) => edge(p, h[(i + 1) % h.length], false));
+            c.setLineDash([]); c.lineCap = 'butt';
             
             const sign = ringArea(pts) >= 0 ? 1 : -1;
             c.font = labelFont; c.fillStyle = '#2E3440'; c.textAlign = 'center'; c.textBaseline = 'middle';
@@ -4757,7 +4780,7 @@
                 const e1 = { x: p.x - prev.x, y: p.y - prev.y }, e2 = { x: next.x - p.x, y: next.y - p.y };
                 const turn = Math.atan2(e1.x * e2.y - e1.y * e2.x, e1.x * e2.x + e1.y * e2.y);
                 const interior = (Math.PI - sign * turn) * 180 / Math.PI;
-                if (Math.abs(interior - 90) < 1.5 || Math.abs(interior - 270) < 1.5) return;   // square corners need no label
+                if ([90, 180, 270].some(a => Math.abs(interior - a) < 1.5)) return;   // square corners need no label
                 const u = { x: prev.x - p.x, y: prev.y - p.y }, v = { x: next.x - p.x, y: next.y - p.y };
                 const ul = Math.hypot(u.x, u.y), vl = Math.hypot(v.x, v.y);
                 let bx2 = u.x / ul + v.x / vl, by2 = u.y / ul + v.y / vl;

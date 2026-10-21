@@ -1,0 +1,30 @@
+{
+ "rectangle": {
+  "surfaces": 1,
+  "summary": "Surface area: 80.00 ft² Full tiles (no cuts): 63 Width cuts (paired): 7 cuts → 7 tiles Height cuts (paired): 9 cuts → 9 tiles Diagonal/complex cuts: 1 tiles Estimated tiles to buy: 80 Grout (Sanded): 24.8 lbs"
+ },
+ "lshape": {
+  "surfaces": 1,
+  "summary": "Surface area: 48.61 ft² Full tiles (no cuts): 16 Width cuts (paired): 3 cuts → 2 tiles Height cuts (paired): 4 cuts → 4 tiles Diagonal/complex cuts: 3 tiles Estimated tiles to buy: 25 Grout (Sanded): 10.0 lbs"
+ },
+ "island": {
+  "surfaces": 2,
+  "summary": "Surface area: 120.00 ft² Full tiles (no cuts): 83 Width cuts (paired): 25 cuts → 17 tiles Height cuts (paired): 19 cuts → 15 tiles Diagonal/complex cuts: 9 tiles Estimated tiles to buy: 124 Grout (Sanded): 37.1 lbs"
+ },
+ "chamfer": {
+  "surfaces": 1,
+  "summary": "Surface area: 23.36 ft² Full tiles (no cuts): 4 Width cuts (paired): 4 cuts → 4 tiles Height cuts (paired): 1 cuts → 1 tiles Diagonal/complex cuts: 6 tiles Estimated tiles to buy: 15 Grout (Sanded): 5.4 lbs"
+ },
+ "rotatedBond": {
+  "surfaces": 1,
+  "summary": "Surface area: 90.28 ft² Full tiles (no cuts): 27 Width cuts (paired): 0 cuts → 0 tiles Height cuts (paired): 0 cuts → 0 tiles Diagonal/complex cuts: 39 tiles Estimated tiles to buy: 66 Grout (Sanded): 20.9 lbs"
+ },
+ "offsets45": {
+  "surfaces": 1,
+  "summary": "Surface area: 14.67 ft² Full tiles (no cuts): 0 Width cuts (paired): 0 cuts → 0 tiles Height cuts (paired): 0 cuts → 0 tiles Diagonal/complex cuts: 26 tiles Estimated tiles to buy: 26 Grout (Sanded): 9.1 lbs"
+ },
+ "everything": {
+  "surfaces": 2,
+  "summary": "Surface area: 44.47 ft² Full tiles (no cuts): 6 Width cuts (paired): 0 cuts → 0 tiles Height cuts (paired): 0 cuts → 0 tiles Diagonal/complex cuts: 32 tiles Estimated tiles to buy: 38 Grout (Sanded): 9.2 lbs"
+ }
+}

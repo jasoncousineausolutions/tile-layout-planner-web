@@ -1149,6 +1149,48 @@
             border-left: 3px solid var(--steel-blue);
         }
         
+        /* A menu of plain actions: a tree, with the line running down the left and a branch to every item */
+        .submenu-tree {
+            padding: 0;
+            border-left: none;
+        }
+        .submenu-tree button {
+            position: relative;
+            display: block;
+            width: 100%;
+            margin: 0;
+            padding: 9px 10px 9px 28px;
+            background: transparent;
+            border: none;
+            border-radius: 0 4px 4px 0;
+            text-align: left;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--slate-gray);
+        }
+        .submenu-tree button:hover { background: var(--light-gray); }
+        .submenu-tree button::before {   /* the branch */
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            width: 16px;
+            height: 3px;
+            margin-top: -1.5px;
+            background: var(--steel-blue);
+        }
+        .submenu-tree button::after {   /* the line, which stops at the last item */
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: var(--steel-blue);
+        }
+        .submenu-tree button:first-child::after { top: -4px; }
+        .submenu-tree button:last-child::after { bottom: 50%; }
+        
         /* Mobile links footer (hidden on desktop) */
         .mobile-links-footer {
             display: none;
@@ -1911,11 +1953,11 @@
                 <button id="btnRecenterMobile" style="width: 100%; margin-bottom: 8px;">Re-center View</button>
                 <div class="menu-group">
                 <button id="btnToggleFileMobile" class="toggle-section-btn" aria-expanded="false" style="margin-top: 0;">Import &amp; Export</button>
-                <div id="fileCollapsibleMobile" class="collapsible-section submenu" style="display: none;">
-                    <button id="btnSketchMobile" style="width: 100%; margin-bottom: 8px;">Import from Sketch (Beta)</button>
-                    <button id="btnSaveLoadMobile" style="width: 100%; margin-bottom: 8px;">Save / Load Design</button>
-                    <button id="btnTileListMobile" style="width: 100%; margin-bottom: 8px;">Tile List</button>
-                    <button id="btnPrintMobile" style="width: 100%; margin-bottom: 8px;">Save Layout as Image</button>
+                <div id="fileCollapsibleMobile" class="collapsible-section submenu submenu-tree" style="display: none;">
+                    <button id="btnSketchMobile">Import from Sketch (Beta)</button>
+                    <button id="btnSaveLoadMobile">Save / Load Design</button>
+                    <button id="btnTileListMobile">Tile List</button>
+                    <button id="btnPrintMobile">Save Layout as Image</button>
                 </div>
                 </div>
                 <div class="link-buttons">
@@ -1930,12 +1972,12 @@
             <button id="btnRecenter" style="width: 100%; margin-bottom: 10px;">Re-center View</button>
             <div class="menu-group">
             <button id="btnToggleFile" class="toggle-section-btn" aria-expanded="false" style="margin-top: 0;">Import &amp; Export</button>
-            <div id="fileCollapsible" class="collapsible-section submenu" style="display: none;">
-                <button id="btnSketch" style="width: 100%; margin-bottom: 10px;">Import from Sketch (Beta)</button>
-                <button id="btnSaveLoad" style="width: 100%; margin-bottom: 10px;">Save / Load Design</button>
-                <button id="btnTileList" style="width: 100%; margin-bottom: 10px;">Tile List</button>
-                <button id="btnPrint" style="width: 100%; margin-bottom: 10px;">Print Layout / Save as PDF</button>
-                <button id="btnSaveImage" style="width: 100%; margin-bottom: 10px;">Save Layout as Image</button>
+            <div id="fileCollapsible" class="collapsible-section submenu submenu-tree" style="display: none;">
+                <button id="btnSketch">Import from Sketch (Beta)</button>
+                <button id="btnSaveLoad">Save / Load Design</button>
+                <button id="btnTileList">Tile List</button>
+                <button id="btnPrint">Print Layout / Save as PDF</button>
+                <button id="btnSaveImage">Save Layout as Image</button>
             </div>
             </div>
             <div id="unitsRow">

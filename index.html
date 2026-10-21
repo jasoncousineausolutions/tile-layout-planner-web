@@ -1168,7 +1168,8 @@
             font-weight: 500;
             color: var(--slate-gray);
         }
-        .submenu-tree button:hover { background: var(--light-gray); }
+        @media (hover: hover) { .submenu-tree button:hover { background: var(--light-gray); } }   /* on touch screens :hover would stay on the last item tapped */
+        .submenu-tree button:active { background: var(--light-gray); }
         .submenu-tree button::before {   /* the branch */
             content: '';
             position: absolute;

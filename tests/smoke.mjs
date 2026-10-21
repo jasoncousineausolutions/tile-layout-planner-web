@@ -183,6 +183,33 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['ph
     await page.evaluate(() => { const el = document.querySelector('.label-size-select'); el.value = '1'; el.dispatchEvent(new Event('change', { bubbles: true })); });
     expect(page.errors.length === 0, page.errors.join(' | '));
   });
+  await step('finalize: dragging the canvas pans it, a plain click still selects, the middle button pans anywhere', async () => {
+    const phone = await page.evaluate(() => innerWidth <= 800);
+    if (phone) return;   // touch has its own pan and pinch
+    await page.evaluate(() => { const k = 10.8, p = (x, y) => ({ x: x * k, y: y * k }); app.importDesign(JSON.stringify({ format: 'tile-planner-design', version: '1.1', appState: { unitMode: 'decimal2', currentTab: 'tileLayout', zoom: 1, panX: 0, panY: 0 }, tileLayout: { tileWidthInches: 12, tileHeightInches: 12, groutWidthInches: 0.125, tileDepthInches: 0.5, groutType: 'unknown', bondOffset: 0, rotationDegrees: 0, offsetXInches: 0, offsetYInches: 0 }, surface: { vertices: [p(0, 0), p(50, 0), p(50, 38), p(0, 38)], lines: [[0, 1], [1, 2], [2, 3], [3, 0]] } })); });
+    await page.click('.tab[data-tab="finalize"]'); await page.waitForTimeout(250);
+    await page.evaluate(() => { app.selectedSurfaces = []; app.updateTileCount(); app.panX = 100; app.panY = 100; app.zoom = 1; app.redraw(); });
+    const box = await page.evaluate(() => { const r = app.canvas.getBoundingClientRect(); return { x: r.left, y: r.top }; });
+    const inside = { x: box.x + 100 + 10.8 * 25, y: box.y + 100 + 10.8 * 19 };   // the middle of the room
+    // a drag that starts on the surface pans and does not select it
+    await page.mouse.move(inside.x, inside.y); await page.mouse.down(); await page.mouse.move(inside.x + 60, inside.y + 30, { steps: 6 }); await page.mouse.up();
+    let st = await page.evaluate(() => ({ panX: app.panX, panY: app.panY, sel: app.selectedSurfaces.length }));
+    expect(Math.abs(st.panX - 160) < 1 && Math.abs(st.panY - 130) < 1, 'drag did not pan the canvas: ' + JSON.stringify(st));
+    expect(st.sel === 0, 'a drag should not select the surface');
+    // a click on the surface selects it, and another click deselects it
+    const now = { x: inside.x + 60, y: inside.y + 30 };
+    await page.mouse.click(now.x, now.y);
+    expect((await page.evaluate(() => app.selectedSurfaces.length)) === 1, 'a click should select the surface');
+    await page.mouse.click(now.x, now.y);
+    expect((await page.evaluate(() => app.selectedSurfaces.length)) === 0, 'a second click should deselect it');
+    // the middle button pans in any mode
+    await page.click('.tab[data-tab="surfaceDesign"]'); await page.waitForTimeout(200);
+    const before = await page.evaluate(() => ({ x: app.panX, v: app.vertices.length }));
+    await page.mouse.move(box.x + 300, box.y + 300); await page.mouse.down({ button: 'middle' }); await page.mouse.move(box.x + 340, box.y + 300, { steps: 4 }); await page.mouse.up({ button: 'middle' });
+    const after = await page.evaluate(() => ({ x: app.panX, v: app.vertices.length }));
+    expect(Math.abs(after.x - before.x - 40) < 1 && after.v === before.v, 'middle button drag did not pan (or drew something): ' + JSON.stringify({ before, after }));
+    expect(page.errors.length === 0, page.errors.join(' | '));
+  });
   await step('import & export menu and tile list: opens, lists the cuts, offers the right buttons, saves pages', async () => {
     const phone = await page.evaluate(() => innerWidth <= 800);
     const [toggle, section, listBtn] = phone ? ['#btnToggleFileMobile', '#fileCollapsibleMobile', '#btnTileListMobile'] : ['#btnToggleFile', '#fileCollapsible', '#btnTileList'];

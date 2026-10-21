@@ -2834,6 +2834,7 @@
             this.canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
             this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
             this.canvas.addEventListener('mouseup', (e) => this.onMouseUp(e));
+            this.canvas.addEventListener('mouseleave', () => this.endMousePan());
             this.canvas.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
             
             // Canvas touch events
@@ -4068,7 +4069,7 @@
             this.mousePos = null;
             if (newMode === Mode.ADD_LINE) { this.clearSelection(); this.canvas.style.cursor = 'crosshair'; }
             else if (newMode === Mode.IDLE) { this.canvas.style.cursor = 'default'; }
-            else if (newMode === Mode.FINALIZE) { this.canvas.style.cursor = 'pointer'; this.hoverSurface = null; }
+            else if (newMode === Mode.FINALIZE) { this.canvas.style.cursor = 'grab'; this.hoverSurface = null; }
             this.updateModeButtons();
             this.updateCancelButton();
             this.updateDeleteButton();
@@ -5321,8 +5322,27 @@
         // MOUSE EVENTS
         // --------------------------------------------------------
 
+        // Dragging the canvas with the mouse: the middle button in any mode, or the left button in Finalize, where a click
+        // (a press that hardly moves) still selects the surface under it. Touch has its own panning.
+        endMousePan() {
+            if (!this.mousePan) return;
+            this.mousePan = null;
+            this.canvas.style.cursor = this.mode === Mode.FINALIZE ? 'grab' : (this.mode === Mode.ADD_LINE ? 'crosshair' : 'default');
+        }
+
         onMouseDown(e) {
+            if (e.button === 1) {
+                e.preventDefault();
+                this.mousePan = { x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY, moved: true, surface: null };
+                this.canvas.style.cursor = 'grabbing';
+                return;
+            }
             const pos = this.getMousePos(e);
+            
+            if (this.mode === Mode.FINALIZE && e instanceof MouseEvent) {
+                this.mousePan = { x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY, moved: false, surface: this.findSurfaceAt(pos) };
+                return;
+            }
             
             if (this.mode === Mode.ADD_LINE) {
                 this.handleAddLineClick(pos);
@@ -5374,12 +5394,27 @@
         }
 
         onMouseMove(e) {
+            if (this.mousePan) {
+                if (!this.mousePan.moved && Math.hypot(e.clientX - this.mousePan.startX, e.clientY - this.mousePan.startY) > 4) {
+                    this.mousePan.moved = true;
+                    this.canvas.style.cursor = 'grabbing';
+                }
+                if (this.mousePan.moved) {
+                    this.panX += e.clientX - this.mousePan.x;
+                    this.panY += e.clientY - this.mousePan.y;
+                    this.hoverSurface = null;
+                    this.redraw();
+                }
+                this.mousePan.x = e.clientX; this.mousePan.y = e.clientY;
+                return;
+            }
             const pos = this.getMousePos(e);
             this.mousePos = pos;
             
             if (this.mode === Mode.FINALIZE) {
                 const foundSurface = this.findSurfaceAt(pos);
                 if (foundSurface !== this.hoverSurface) { this.hoverSurface = foundSurface; this.redraw(); }
+                if (e instanceof MouseEvent) this.canvas.style.cursor = foundSurface !== null ? 'pointer' : 'grab';
                 return;
             }
             
@@ -5436,6 +5471,12 @@
         }
 
         onMouseUp(e) {
+            if (this.mousePan) {
+                const press = this.mousePan;
+                this.endMousePan();
+                if (!press.moved && press.surface !== null) this.toggleSurfaceSelection(press.surface);
+                return;
+            }
             if (this.isRectSelecting) {
                 const minX = Math.min(this.rectStart.x, this.rectEnd.x), maxX = Math.max(this.rectStart.x, this.rectEnd.x);
                 const minY = Math.min(this.rectStart.y, this.rectEnd.y), maxY = Math.max(this.rectStart.y, this.rectEnd.y);

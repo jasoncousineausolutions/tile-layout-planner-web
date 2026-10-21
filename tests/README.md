@@ -2,7 +2,7 @@
 
 `smoke.mjs` opens `index.html` in a real Chromium browser (desktop and phone sizes) and does what a person would, with real
 mouse clicks: draws a room, finalizes it and checks the tile estimate, drags a corner, adds a line, saves and reloads a design,
-switches units, and runs the whole Import from Sketch dialog against a fake service (success, every error message, offline,
+switches units, opens the File section and the Tile List, and runs the whole Import from Sketch dialog against a fake service (success, every error message, offline,
 cancel, replacing an existing drawing). It fails if the page throws any error or a flow breaks. No real Gemini calls are made.
 
 ```

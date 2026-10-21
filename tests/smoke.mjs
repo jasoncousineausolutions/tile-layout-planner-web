@@ -183,6 +183,34 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['ph
     await page.evaluate(() => { const el = document.querySelector('.label-size-select'); el.value = '1'; el.dispatchEvent(new Event('change', { bubbles: true })); });
     expect(page.errors.length === 0, page.errors.join(' | '));
   });
+  await step('file section and tile list: opens, lists the cuts, offers the right buttons, saves pages', async () => {
+    const phone = await page.evaluate(() => innerWidth <= 800);
+    const [toggle, section, listBtn] = phone ? ['#btnToggleFileMobile', '#fileCollapsibleMobile', '#btnTileListMobile'] : ['#btnToggleFile', '#fileCollapsible', '#btnTileList'];
+    // a known room with cuts (the earlier steps reload the page, which clears the drawing)
+    await page.evaluate(() => { const k = 10.8, p = (x, y) => ({ x: x * k, y: y * k }); app.importDesign(JSON.stringify({ format: 'tile-planner-design', version: '1.1', appState: { unitMode: 'decimal2', currentTab: 'tileLayout', zoom: 1, panX: 0, panY: 0 }, tileLayout: { tileWidthInches: 12, tileHeightInches: 12, groutWidthInches: 0.125, tileDepthInches: 0.5, groutType: 'unknown', bondOffset: 0, rotationDegrees: 0, offsetXInches: 0, offsetYInches: 0 }, surface: { vertices: [p(0, 0), p(50, 0), p(50, 38), p(0, 38)], lines: [[0, 1], [1, 2], [2, 3], [3, 0]] } })); });
+    await page.click('.tab[data-tab="finalize"]'); await page.waitForTimeout(250);
+    await page.evaluate(() => { if (app.selectedSurfaces.length === 0) app.toggleSurfaceSelection(0); });
+    expect(!(await page.isVisible(section)), 'File section should start closed');
+    await page.click(toggle);
+    expect(await page.isVisible(section), 'File section did not open');
+    expect(await page.isVisible(listBtn), 'Tile List button is not in the File section');
+    await page.click(listBtn); await page.waitForSelector('#tileListPages img', { state: 'visible' });
+    const info = await page.evaluate(() => ({ pages: document.querySelectorAll('#tileListPages img').length, w: document.querySelector('#tileListPages img').naturalWidth, h: document.querySelector('#tileListPages img').naturalHeight, save: getComputedStyle(document.getElementById('tileListSave')).display, print: getComputedStyle(document.getElementById('tileListPrint')).display }));
+    expect(info.pages >= 1 && info.w === 1700 && info.h === 2200, 'unexpected tile list pages: ' + JSON.stringify(info));
+    expect(info.save !== 'none' && info.print !== 'none', 'Print and Save buttons should show in a browser');
+    // saving in a browser downloads one PNG per page
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#tileListSave')]);
+    expect(/^tile-list.*\.png$/.test(download.suggestedFilename()), 'unexpected file name ' + download.suggestedFilename());
+    await page.click('#tileListClose');
+    expect(!(await page.isVisible('#tileListOverlay')), 'Tile List did not close');
+    // nothing selected: a message instead of a list
+    await page.evaluate(() => { app.selectedSurfaces = []; });
+    await page.click(listBtn);
+    expect((await page.textContent('#tileListNote')).includes('Select the surfaces'), 'no message when nothing is selected');
+    expect((await page.evaluate(() => document.querySelectorAll('#tileListPages img').length)) === 0, 'pages shown with nothing selected');
+    await page.click('#tileListClose');
+    expect(page.errors.length === 0, page.errors.join(' | '));
+  });
   await page.context().close();
 
   // ---------- sketch import ----------

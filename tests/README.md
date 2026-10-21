@@ -14,3 +14,14 @@ It takes about a minute. Run it before every release. `sketch.png` is just a pla
 
 What it does NOT cover: the real Gemini reading (that lives in the website's Worker), and anything Android-specific
 (the camera, permissions, the app WebView). Test those on a phone.
+
+# Tile-count baseline
+
+`baseline.mjs` loads seven layouts (rectangle, L-shape, island, angled corner, rotated grid with a running-bond offset, 45° grid
+with offsets, and a mix) and compares the Tile Estimate for each against `baseline.json`. Run it after any change to how tiles
+are laid out or counted; a difference means the counts changed.
+
+```
+node tests/baseline.mjs index.html            # compare
+node tests/baseline.mjs --write index.html    # re-record, only when a change in the counts is intended
+```

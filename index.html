@@ -1978,6 +1978,76 @@
         ['angle', 'Angles']
     ];
 
+    // ============================================================
+    // TILE LAYOUT
+    // ============================================================
+    // A pattern turns a rectangle of layout space into the tiles inside it. Layout space is the tile grid's own frame; the
+    // layout's rotation and offset place it on the drawing. Every tile is an axis-aligned rectangle { x, y, w, h } in layout
+    // space (before grout), so any pattern (running bond, herringbone, mixed sizes) reduces to a list of rectangles.
+    const TILE_PATTERNS = {
+        // Rows of one tile size. Every second row shifts by `bond` tile widths (0 = stacked, 0.5 = running bond).
+        grid: {
+            tilesIn(layout, minX, minY, maxX, maxY) {
+                const { tileW, tileH, effW, effH, bond } = layout;
+                const startCol = Math.floor(minX / effW) - 1, endCol = Math.ceil(maxX / effW) + 1;
+                const startRow = Math.floor(minY / effH) - 1, endRow = Math.ceil(maxY / effH) + 1;
+                const tiles = [];
+                for (let row = startRow; row <= endRow; row++) {
+                    const rowOffset = (row % 2) * bond * effW;
+                    for (let col = startCol; col <= endCol; col++) {
+                        tiles.push({ x: col * effW + rowOffset, y: row * effH, w: tileW, h: tileH });
+                    }
+                }
+                return tiles;
+            }
+        }
+    };
+
+    // Everything that decides where tiles sit. Sizes are in world pixels. The tile count, the cut measurements and the
+    // grid drawing all take their tiles from here.
+    class TileLayout {
+        constructor({ pattern = 'grid', tileW, tileH, groutW, bond, rotationRad, offsetX, offsetY }) {
+            Object.assign(this, { pattern, tileW, tileH, groutW, bond, rotationRad, offsetX, offsetY });
+            this.effW = tileW + groutW;
+            this.effH = tileH + groutW;
+        }
+
+        isUsable() { return this.effW > 1 && this.effH > 1; }
+
+        // A point of layout space on the drawing.
+        toWorld(x, y) {
+            const cosR = Math.cos(this.rotationRad), sinR = Math.sin(this.rotationRad);
+            return { x: x * cosR - y * sinR + this.offsetX, y: x * sinR + y * cosR + this.offsetY };
+        }
+
+        // The layout-space rectangle that covers a rectangle of the drawing, plus `pad` on every side.
+        localBounds(minX, minY, maxX, maxY, pad = 0) {
+            const cosR = Math.cos(-this.rotationRad), sinR = Math.sin(-this.rotationRad);
+            const corners = [
+                { x: minX - this.offsetX, y: minY - this.offsetY }, { x: maxX - this.offsetX, y: minY - this.offsetY },
+                { x: minX - this.offsetX, y: maxY - this.offsetY }, { x: maxX - this.offsetX, y: maxY - this.offsetY }
+            ].map(c => ({ x: c.x * cosR - c.y * sinR, y: c.x * sinR + c.y * cosR }));
+            return {
+                minX: Math.min(...corners.map(c => c.x)) - pad, minY: Math.min(...corners.map(c => c.y)) - pad,
+                maxX: Math.max(...corners.map(c => c.x)) + pad, maxY: Math.max(...corners.map(c => c.y)) + pad
+            };
+        }
+
+        // Tiles in a layout-space rectangle: { x, y, w, h } plus `corners`, the four corners on the drawing.
+        tilesIn(minX, minY, maxX, maxY) {
+            return TILE_PATTERNS[this.pattern].tilesIn(this, minX, minY, maxX, maxY).map(t => ({
+                ...t,
+                corners: [this.toWorld(t.x, t.y), this.toWorld(t.x + t.w, t.y), this.toWorld(t.x + t.w, t.y + t.h), this.toWorld(t.x, t.y + t.h)]
+            }));
+        }
+
+        // Tiles over a rectangle of the drawing, plus `pad` on every side.
+        tilesCovering(minX, minY, maxX, maxY, pad = 0) {
+            const b = this.localBounds(minX, minY, maxX, maxY, pad);
+            return this.tilesIn(b.minX, b.minY, b.maxX, b.maxY);
+        }
+    }
+
     const Mode = {
         IDLE: 'IDLE',
         ADD_LINE: 'ADD_LINE',
@@ -3407,14 +3477,10 @@
                 return;
             }
             
-            const tileW = this.tileWidthInches * CONFIG.PIXELS_PER_INCH;
-            const tileH = this.tileHeightInches * CONFIG.PIXELS_PER_INCH;
-            const groutW = this.groutWidthInches * CONFIG.PIXELS_PER_INCH;
-            const offsetX = this.offsetXInches * CONFIG.PIXELS_PER_INCH;
-            const offsetY = this.offsetYInches * CONFIG.PIXELS_PER_INCH;
-            const rotationRad = (this.rotationDegrees * Math.PI) / 180;
-            const effectiveTileW = tileW + groutW, effectiveTileH = tileH + groutW;
-            if (effectiveTileW <= 1 || effectiveTileH <= 1) return;
+            const layout = this.getLayout();
+            if (!layout.isUsable()) return;
+            const rotationRad = layout.rotationRad;
+            const tileW = layout.tileW, tileH = layout.tileH;
             
             const fullWidthIn = tileW / CONFIG.PIXELS_PER_INCH;
             const fullHeightIn = tileH / CONFIG.PIXELS_PER_INCH;
@@ -3434,98 +3500,75 @@
                 let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
                 for (const pt of polygon) { minX = Math.min(minX, pt.x); minY = Math.min(minY, pt.y); maxX = Math.max(maxX, pt.x); maxY = Math.max(maxY, pt.y); }
                 
-                const cosR = Math.cos(-rotationRad), sinR = Math.sin(-rotationRad);
-                const worldCorners = [
-                    { x: minX - offsetX, y: minY - offsetY }, { x: maxX - offsetX, y: minY - offsetY },
-                    { x: minX - offsetX, y: maxY - offsetY }, { x: maxX - offsetX, y: maxY - offsetY }
-                ];
-                const gridCorners = worldCorners.map(c => ({ x: c.x * cosR - c.y * sinR, y: c.x * sinR + c.y * cosR }));
-                let gMinX = Infinity, gMinY = Infinity, gMaxX = -Infinity, gMaxY = -Infinity;
-                for (const c of gridCorners) { gMinX = Math.min(gMinX, c.x); gMinY = Math.min(gMinY, c.y); gMaxX = Math.max(gMaxX, c.x); gMaxY = Math.max(gMaxY, c.y); }
-                const padding = Math.max(effectiveTileW, effectiveTileH) * 2;
-                gMinX -= padding; gMinY -= padding; gMaxX += padding; gMaxY += padding;
-                
-                const startCol = Math.floor(gMinX / effectiveTileW) - 1, endCol = Math.ceil(gMaxX / effectiveTileW) + 1;
-                const startRow = Math.floor(gMinY / effectiveTileH) - 1, endRow = Math.ceil(gMaxY / effectiveTileH) + 1;
-                
-                for (let row = startRow; row <= endRow; row++) {
-                    const rowOffset = (row % 2) * this.bondOffset * effectiveTileW;
-                    for (let col = startCol; col <= endCol; col++) {
-                        let tileX = col * effectiveTileW + rowOffset, tileY = row * effectiveTileH;
-                        const tileCorners = [
-                            this.transformTilePoint(tileX, tileY, offsetX, offsetY, rotationRad),
-                            this.transformTilePoint(tileX + tileW, tileY, offsetX, offsetY, rotationRad),
-                            this.transformTilePoint(tileX + tileW, tileY + tileH, offsetX, offsetY, rotationRad),
-                            this.transformTilePoint(tileX, tileY + tileH, offsetX, offsetY, rotationRad)
-                        ];
-                        
-                        let cornersInside = 0;
-                        for (const corner of tileCorners) if (this.pointInSurface(corner, surface)) cornersInside++;
-                        
-                        if (cornersInside === 4) { fullTiles++; continue; }
-                        
-                        if (cornersInside === 0) {
-                            let hasIntersection = false;
-                            const boundaries = [outerBoundary.map(i => this.vertices[i])];
-                            if (surface.holes) for (const hole of surface.holes) boundaries.push(hole.map(i => this.vertices[i]));
-                            for (const poly of boundaries) {
-                                for (let pi = 0; pi < poly.length && !hasIntersection; pi++) {
-                                    for (let tj = 0; tj < 4; tj++) {
-                                        if (lineSegmentIntersection(poly[pi], poly[(pi+1) % poly.length], tileCorners[tj], tileCorners[(tj+1) % 4])) {
-                                            hasIntersection = true; break;
-                                        }
-                                    }
-                                }
-                            }
-                            if (!hasIntersection) continue;
-                        }
-                        
-                        // Partial tile — analyze the cut type
-                        const cutEdges = this.findCutEdges(tileCorners, surface);
-                        let widthCut = null, heightCut = null, hasDiagonal = false;
-                        
-                        for (const edge of cutEdges) {
-                            const edgeLenIn = edge.length / CONFIG.PIXELS_PER_INCH;
-                            const isWidthEdge = (edge.tileEdgeIndex === 0 || edge.tileEdgeIndex === 2);
-                            const fullDim = isWidthEdge ? fullWidthIn : fullHeightIn;
-                            if (edgeLenIn < fullDim - tolerance && edgeLenIn > 0.05) {
-                                if (isWidthEdge) widthCut = Math.min(widthCut || 999, edgeLenIn);
-                                else heightCut = Math.min(heightCut || 999, edgeLenIn);
-                            }
-                        }
-                        
-                        // Check for diagonal boundary cuts
-                        const bEdges = [outerBoundary];
-                        if (surface.holes) for (const hole of surface.holes) bEdges.push(hole);
-                        for (const boundary of bEdges) {
-                            for (let bi = 0; bi < boundary.length && !hasDiagonal; bi++) {
-                                const bStart = this.vertices[boundary[bi]];
-                                const bEnd = this.vertices[boundary[(bi + 1) % boundary.length]];
-                                const bAngle = Math.atan2(bEnd.y - bStart.y, bEnd.x - bStart.x) - rotationRad;
-                                let norm = ((bAngle % (Math.PI / 2)) + Math.PI / 2) % (Math.PI / 2);
-                                let sawAngle = norm;
-                                if (sawAngle > Math.PI / 4) sawAngle = Math.PI / 2 - sawAngle;
-                                if (sawAngle * 180 / Math.PI > 0.5) {
-                                    for (let te = 0; te < 4; te++) {
-                                        if (lineSegmentIntersection(bStart, bEnd, tileCorners[te], tileCorners[(te+1) % 4])) {
-                                            hasDiagonal = true; break;
-                                        }
+                for (const tile of layout.tilesCovering(minX, minY, maxX, maxY, Math.max(layout.effW, layout.effH) * 2)) {
+                    const tileCorners = tile.corners;
+                    
+                    let cornersInside = 0;
+                    for (const corner of tileCorners) if (this.pointInSurface(corner, surface)) cornersInside++;
+                    
+                    if (cornersInside === 4) { fullTiles++; continue; }
+                    
+                    if (cornersInside === 0) {
+                        let hasIntersection = false;
+                        const boundaries = [outerBoundary.map(i => this.vertices[i])];
+                        if (surface.holes) for (const hole of surface.holes) boundaries.push(hole.map(i => this.vertices[i]));
+                        for (const poly of boundaries) {
+                            for (let pi = 0; pi < poly.length && !hasIntersection; pi++) {
+                                for (let tj = 0; tj < 4; tj++) {
+                                    if (lineSegmentIntersection(poly[pi], poly[(pi+1) % poly.length], tileCorners[tj], tileCorners[(tj+1) % 4])) {
+                                        hasIntersection = true; break;
                                     }
                                 }
                             }
                         }
-                        
-                        if (hasDiagonal) {
-                            diagonalCuts++;
-                        } else if (widthCut !== null && heightCut !== null) {
-                            diagonalCuts++; // two-axis cut, can't pair
-                        } else if (widthCut !== null) {
-                            widthCuts.push(widthCut);
-                        } else if (heightCut !== null) {
-                            heightCuts.push(heightCut);
-                        } else {
-                            diagonalCuts++;
+                        if (!hasIntersection) continue;
+                    }
+                    
+                    // Partial tile — analyze the cut type
+                    const cutEdges = this.findCutEdges(tileCorners, surface);
+                    let widthCut = null, heightCut = null, hasDiagonal = false;
+                    
+                    for (const edge of cutEdges) {
+                        const edgeLenIn = edge.length / CONFIG.PIXELS_PER_INCH;
+                        const isWidthEdge = (edge.tileEdgeIndex === 0 || edge.tileEdgeIndex === 2);
+                        const fullDim = isWidthEdge ? fullWidthIn : fullHeightIn;
+                        if (edgeLenIn < fullDim - tolerance && edgeLenIn > 0.05) {
+                            if (isWidthEdge) widthCut = Math.min(widthCut || 999, edgeLenIn);
+                            else heightCut = Math.min(heightCut || 999, edgeLenIn);
                         }
+                    }
+                    
+                    // Check for diagonal boundary cuts
+                    const bEdges = [outerBoundary];
+                    if (surface.holes) for (const hole of surface.holes) bEdges.push(hole);
+                    for (const boundary of bEdges) {
+                        for (let bi = 0; bi < boundary.length && !hasDiagonal; bi++) {
+                            const bStart = this.vertices[boundary[bi]];
+                            const bEnd = this.vertices[boundary[(bi + 1) % boundary.length]];
+                            const bAngle = Math.atan2(bEnd.y - bStart.y, bEnd.x - bStart.x) - rotationRad;
+                            let norm = ((bAngle % (Math.PI / 2)) + Math.PI / 2) % (Math.PI / 2);
+                            let sawAngle = norm;
+                            if (sawAngle > Math.PI / 4) sawAngle = Math.PI / 2 - sawAngle;
+                            if (sawAngle * 180 / Math.PI > 0.5) {
+                                for (let te = 0; te < 4; te++) {
+                                    if (lineSegmentIntersection(bStart, bEnd, tileCorners[te], tileCorners[(te+1) % 4])) {
+                                        hasDiagonal = true; break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (hasDiagonal) {
+                        diagonalCuts++;
+                    } else if (widthCut !== null && heightCut !== null) {
+                        diagonalCuts++; // two-axis cut, can't pair
+                    } else if (widthCut !== null) {
+                        widthCuts.push(widthCut);
+                    } else if (heightCut !== null) {
+                        heightCuts.push(heightCut);
+                    } else {
+                        diagonalCuts++;
                     }
                 }
             }
@@ -5112,47 +5155,19 @@
         }
 
         drawPartialTileMeasurements(surface) {
-            const ctx = this.ctx;
             const outerBoundary = this.getSurfaceOuterBoundary(surface);
             const polygon = outerBoundary.map(i => this.vertices[i]);
-            const tileW = this.tileWidthInches * CONFIG.PIXELS_PER_INCH, tileH = this.tileHeightInches * CONFIG.PIXELS_PER_INCH;
-            const groutW = this.groutWidthInches * CONFIG.PIXELS_PER_INCH;
-            const offsetX = this.offsetXInches * CONFIG.PIXELS_PER_INCH, offsetY = this.offsetYInches * CONFIG.PIXELS_PER_INCH;
-            const rotationRad = (this.rotationDegrees * Math.PI) / 180;
-            const effectiveTileW = tileW + groutW, effectiveTileH = tileH + groutW;
-            if (effectiveTileW <= 1 || effectiveTileH <= 1) return;
+            const layout = this.getLayoutForSurface(surface);
+            if (!layout.isUsable()) return;
+            const { tileW, tileH, effW: effectiveTileW, effH: effectiveTileH, offsetX, offsetY, rotationRad } = layout;
             
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             for (const pt of polygon) { minX = Math.min(minX, pt.x); minY = Math.min(minY, pt.y); maxX = Math.max(maxX, pt.x); maxY = Math.max(maxY, pt.y); }
             
-            const cosR = Math.cos(-rotationRad), sinR = Math.sin(-rotationRad);
-            const worldCorners = [
-                { x: minX - offsetX, y: minY - offsetY }, { x: maxX - offsetX, y: minY - offsetY },
-                { x: minX - offsetX, y: maxY - offsetY }, { x: maxX - offsetX, y: maxY - offsetY }
-            ];
-            const gridCorners = worldCorners.map(c => ({ x: c.x * cosR - c.y * sinR, y: c.x * sinR + c.y * cosR }));
-            let gMinX = Infinity, gMinY = Infinity, gMaxX = -Infinity, gMaxY = -Infinity;
-            for (const c of gridCorners) { gMinX = Math.min(gMinX, c.x); gMinY = Math.min(gMinY, c.y); gMaxX = Math.max(gMaxX, c.x); gMaxY = Math.max(gMaxY, c.y); }
-            const padding = Math.max(effectiveTileW, effectiveTileH) * 2;
-            gMinX -= padding; gMinY -= padding; gMaxX += padding; gMaxY += padding;
-            
             const partialTiles = [];
-            const startCol = Math.floor(gMinX / effectiveTileW) - 1, endCol = Math.ceil(gMaxX / effectiveTileW) + 1;
-            const startRow = Math.floor(gMinY / effectiveTileH) - 1, endRow = Math.ceil(gMaxY / effectiveTileH) + 1;
-            
-            for (let row = startRow; row <= endRow; row++) {
-                const rowOffset = (row % 2) * this.bondOffset * effectiveTileW;
-                for (let col = startCol; col <= endCol; col++) {
-                    let tileX = col * effectiveTileW + rowOffset, tileY = row * effectiveTileH;
-                    const tileCorners = [
-                        this.transformTilePoint(tileX, tileY, offsetX, offsetY, rotationRad),
-                        this.transformTilePoint(tileX + tileW, tileY, offsetX, offsetY, rotationRad),
-                        this.transformTilePoint(tileX + tileW, tileY + tileH, offsetX, offsetY, rotationRad),
-                        this.transformTilePoint(tileX, tileY + tileH, offsetX, offsetY, rotationRad)
-                    ];
-                    const tileInfo = this.analyzeTileIntersectionWithSurface(tileCorners, surface, tileW, tileH);
-                    if (tileInfo && tileInfo.isPartial) partialTiles.push(tileInfo);
-                }
+            for (const tile of layout.tilesCovering(minX, minY, maxX, maxY, Math.max(effectiveTileW, effectiveTileH) * 2)) {
+                const tileInfo = this.analyzeTileIntersectionWithSurface(tile.corners, surface, tileW, tileH);
+                if (tileInfo && tileInfo.isPartial) partialTiles.push(tileInfo);
             }
             if (this.showCutMeasurements) {
                 this.drawPartialTileLabels(partialTiles, tileW, tileH);
@@ -5163,9 +5178,16 @@
             }
         }
 
-        transformTilePoint(x, y, offsetX, offsetY, rotationRad) {
-            const cosR = Math.cos(rotationRad), sinR = Math.sin(rotationRad);
-            return { x: x * cosR - y * sinR + offsetX, y: x * sinR + y * cosR + offsetY };
+        // The tile layout in use. Every surface shares one for now; per-surface layouts only need this to look at `surface`.
+        getLayoutForSurface(surface) { return this.getLayout(); }
+
+        getLayout() {
+            return new TileLayout({
+                tileW: this.tileWidthInches * CONFIG.PIXELS_PER_INCH, tileH: this.tileHeightInches * CONFIG.PIXELS_PER_INCH,
+                groutW: this.groutWidthInches * CONFIG.PIXELS_PER_INCH, bond: this.bondOffset,
+                rotationRad: (this.rotationDegrees * Math.PI) / 180,
+                offsetX: this.offsetXInches * CONFIG.PIXELS_PER_INCH, offsetY: this.offsetYInches * CONFIG.PIXELS_PER_INCH
+            });
         }
 
         analyzeTileIntersectionWithSurface(tileCorners, surface, tileW, tileH) {
@@ -5710,13 +5732,9 @@
 
         drawGrid() {
             const ctx = this.ctx;
-            const tileW = this.tileWidthInches * CONFIG.PIXELS_PER_INCH, tileH = this.tileHeightInches * CONFIG.PIXELS_PER_INCH;
-            const groutW = this.groutWidthInches * CONFIG.PIXELS_PER_INCH;
-            const bond = this.bondOffset;
-            const offsetX = this.offsetXInches * CONFIG.PIXELS_PER_INCH, offsetY = this.offsetYInches * CONFIG.PIXELS_PER_INCH;
-            const rotationRad = (this.rotationDegrees * Math.PI) / 180;
-            const effectiveTileW = tileW + groutW, effectiveTileH = tileH + groutW;
-            if (effectiveTileW <= 1 || effectiveTileH <= 1) return;
+            const layout = this.getLayout();
+            if (!layout.isUsable()) return;
+            const { tileW, tileH, groutW, effW, effH, offsetX, offsetY, rotationRad } = layout;
             
             const isTileMode = this.currentTab === 'tileLayout';
             const isSurfaceMode = this.currentTab === 'surfaceDesign';
@@ -5724,7 +5742,7 @@
             let strokeWidth = isTileMode ? 1.5 : 1;
             
             const bounds = this.getVisibleWorldBounds();
-            const padding = Math.max(effectiveTileW, effectiveTileH) * 2;
+            const padding = Math.max(effW, effH) * 2;
             const rotationPadding = Math.max(bounds.width, bounds.height) * Math.abs(Math.sin(rotationRad));
             const totalPadding = padding + rotationPadding;
             
@@ -5733,32 +5751,16 @@
             ctx.translate(offsetX, offsetY);
             ctx.rotate(rotationRad);
             
-            const cosR = Math.cos(-rotationRad), sinR = Math.sin(-rotationRad);
-            const drawMinX = bounds.minX - totalPadding - offsetX, drawMaxX = bounds.maxX + totalPadding - offsetX;
-            const drawMinY = bounds.minY - totalPadding - offsetY, drawMaxY = bounds.maxY + totalPadding - offsetY;
-            const corners = [{ x: drawMinX, y: drawMinY }, { x: drawMaxX, y: drawMinY }, { x: drawMinX, y: drawMaxY }, { x: drawMaxX, y: drawMaxY }];
-            const tc = corners.map(c => ({ x: c.x * cosR - c.y * sinR, y: c.x * sinR + c.y * cosR }));
-            const unrotatedMinX = Math.min(...tc.map(c => c.x)), unrotatedMaxX = Math.max(...tc.map(c => c.x));
-            const unrotatedMinY = Math.min(...tc.map(c => c.y)), unrotatedMaxY = Math.max(...tc.map(c => c.y));
-            
-            const startCol = Math.floor(unrotatedMinX / effectiveTileW) - 1, endCol = Math.ceil(unrotatedMaxX / effectiveTileW) + 1;
-            const startRow = Math.floor(unrotatedMinY / effectiveTileH) - 1, endRow = Math.ceil(unrotatedMaxY / effectiveTileH) + 1;
-            
-            for (let row = startRow; row <= endRow; row++) {
-                const rowOffset = (row % 2) * bond * effectiveTileW;
-                const y = row * effectiveTileH;
-                for (let col = startCol; col <= endCol; col++) {
-                    const x = col * effectiveTileW + rowOffset;
-                    ctx.fillStyle = CONFIG.COLORS.TILE_FILL;
-                    ctx.fillRect(x, y, tileW, tileH);
-                    ctx.strokeStyle = CONFIG.COLORS.TILE_STROKE;
-                    ctx.lineWidth = strokeWidth;
-                    ctx.strokeRect(x, y, tileW, tileH);
-                    if (groutW > 0) {
-                        ctx.fillStyle = CONFIG.COLORS.GROUT;
-                        ctx.fillRect(x + tileW, y, groutW, tileH + groutW);
-                        ctx.fillRect(x, y + tileH, tileW, groutW);
-                    }
+            for (const { x, y } of layout.tilesCovering(bounds.minX - totalPadding, bounds.minY - totalPadding, bounds.maxX + totalPadding, bounds.maxY + totalPadding)) {
+                ctx.fillStyle = CONFIG.COLORS.TILE_FILL;
+                ctx.fillRect(x, y, tileW, tileH);
+                ctx.strokeStyle = CONFIG.COLORS.TILE_STROKE;
+                ctx.lineWidth = strokeWidth;
+                ctx.strokeRect(x, y, tileW, tileH);
+                if (groutW > 0) {
+                    ctx.fillStyle = CONFIG.COLORS.GROUT;
+                    ctx.fillRect(x + tileW, y, groutW, tileH + groutW);
+                    ctx.fillRect(x, y + tileH, tileW, groutW);
                 }
             }
             ctx.restore();

@@ -31,6 +31,10 @@ const layouts = {
   chamfer: { tile: { tileWidthInches: 24, tileHeightInches: 12 }, surface: room([[28, 0], [64, 0], [64, 60], [16, 60], [16, 46], [0, 46], [0, 18]]) },
   rotatedBond: { tile: { tileWidthInches: 24, tileHeightInches: 12, bondOffset: 0.5, rotationDegrees: 30 }, surface: room(rect(0, 0, 130, 100)) },
   thirdBond: { tile: { tileWidthInches: 12, tileHeightInches: 6, bondOffset: 0.33, offsetXInches: 2, offsetYInches: 20 }, surface: room(rect(0, 0, 100, 70)) },
+  steppedThird: { tile: { pattern: 'stepped', tileWidthInches: 12, tileHeightInches: 6, bondOffset: 0.3333, groutWidthInches: 0.125 }, surface: room(rect(0, 0, 100, 70)) },
+  herringbone: { tile: { pattern: 'herringbone', tileWidthInches: 12, tileHeightInches: 3, groutWidthInches: 0.125 }, surface: room([[0, 0], [90, 0], [90, 40], [50, 40], [50, 70], [0, 70]]) },
+  herringbone45: { tile: { pattern: 'herringbone', tileWidthInches: 9, tileHeightInches: 3, groutWidthInches: 0.125, rotationDegrees: 45, offsetXInches: 2 }, surface: room(rect(0, 0, 100, 70), [rect(30, 20, 20, 20)]) },
+  herringboneTall: { tile: { pattern: 'herringbone', tileWidthInches: 4, tileHeightInches: 16, groutWidthInches: 0.25 }, surface: room(rect(0, 0, 80, 60)) },
   offsets45: { tile: { rotationDegrees: 45, offsetXInches: 3.3, offsetYInches: 7.1, groutWidthInches: 0.25 }, surface: room([[0, 0], [96, 0], [96, 24], [72, 24], [72, 8], [60, 8], [60, 24], [0, 24]]) },
   everything: { tile: { tileWidthInches: 18, tileHeightInches: 18, offsetXInches: 5, rotationDegrees: 15 }, surface: room([[28, 0], [90, 0], [90, 80], [16, 80], [16, 46], [0, 46], [0, 18]], [rect(30, 30, 24, 12)]) },
 };

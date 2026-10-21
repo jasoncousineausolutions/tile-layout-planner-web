@@ -183,6 +183,36 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['ph
     await page.evaluate(() => { const el = document.querySelector('.label-size-select'); el.value = '1'; el.dispatchEvent(new Event('change', { bubbles: true })); });
     expect(page.errors.length === 0, page.errors.join(' | '));
   });
+  await step('patterns: the Pattern list changes the layout, labels the offset box, and is kept by save and load', async () => {
+    const phone = await page.evaluate(() => innerWidth <= 800);
+    await page.evaluate(() => { const k = 10.8, p = (x, y) => ({ x: x * k, y: y * k }); app.importDesign(JSON.stringify({ format: 'tile-planner-design', version: '1.1', appState: { unitMode: 'decimal2', currentTab: 'tileLayout', zoom: 1, panX: 0, panY: 0 }, tileLayout: { tileWidthInches: 12, tileHeightInches: 3, groutWidthInches: 0.125, tileDepthInches: 0.5, groutType: 'unknown', bondOffset: 0, rotationDegrees: 0, offsetXInches: 0, offsetYInches: 0 }, surface: { vertices: [p(0, 0), p(60, 0), p(60, 40), p(0, 40)], lines: [[0, 1], [1, 2], [2, 3], [3, 0]] } })); });
+    await page.click('.tab[data-tab="tileLayout"]'); await page.waitForTimeout(200);
+    const setPattern = (v) => page.evaluate((val) => { const el = document.getElementById('tilePattern'); el.value = val; el.dispatchEvent(new Event('change', { bubbles: true })); }, v);
+    const state = () => page.evaluate(() => ({ label: document.getElementById('labelBond').textContent, bondShown: getComputedStyle(document.getElementById('bondGroup')).visibility, tiles: app.getLayout().tilesCovering(0, 0, 648, 432).length, pattern: app.pattern }));
+    let st = await state();
+    expect(st.pattern === 'grid' && st.label === 'Running Bond:' && st.bondShown === 'visible', 'unexpected starting state ' + JSON.stringify(st));
+    const gridTiles = st.tiles;
+    await setPattern('stepped');
+    st = await state();
+    expect(st.label === 'Step:' && st.bondShown === 'visible', 'the offset box should read Step for a stepped pattern: ' + JSON.stringify(st));
+    await setPattern('herringbone');
+    st = await state();
+    expect(st.bondShown === 'hidden' && st.pattern === 'herringbone', 'the offset box should be hidden for herringbone: ' + JSON.stringify(st));
+    expect(st.tiles !== gridTiles, 'herringbone placed the same number of tiles as the grid');
+    // estimate: every tile of a 60 x 40 in room of 12 x 3 in tiles is accounted for (area / tile area = 66.7)
+    await page.click('.tab[data-tab="finalize"]'); await page.waitForTimeout(250);
+    await page.evaluate(() => { app.selectedSurfaces = [0]; app.updateTileCount(); });
+    const total = await page.evaluate(() => +document.querySelector('#tileCountSummary .count-total .count-value').textContent);
+    expect(total >= 67 && total <= 80, 'herringbone tile estimate looks wrong: ' + total);
+    // save and load keeps the pattern; an old design without one loads as a grid
+    const saved = await page.evaluate(() => app.exportDesign());
+    expect(JSON.parse(saved).tileLayout.pattern === 'herringbone', 'the pattern was not saved');
+    await page.evaluate((j) => { app.importDesign(j); }, saved.replace('"pattern": "herringbone"', '"pattern": "grid"'));
+    expect((await page.evaluate(() => app.pattern)) === 'grid' && (await page.evaluate(() => document.getElementById('tilePattern').value)) === 'grid', 'loading did not set the pattern');
+    await page.evaluate((j) => { const d = JSON.parse(j); delete d.tileLayout.pattern; app.importDesign(JSON.stringify(d)); }, saved);
+    expect((await page.evaluate(() => app.pattern)) === 'grid', 'a design with no pattern should load as a grid');
+    expect(page.errors.length === 0, page.errors.join(' | '));
+  });
   await step('finalize: dragging the canvas pans it, a plain click still selects, the middle button pans anywhere', async () => {
     const phone = await page.evaluate(() => innerWidth <= 800);
     if (phone) return;   // touch has its own pan and pinch

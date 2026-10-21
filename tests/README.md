@@ -17,8 +17,8 @@ What it does NOT cover: the real Gemini reading (that lives in the website's Wor
 
 # Tile-count baseline
 
-`baseline.mjs` loads seven layouts (rectangle, L-shape, island, angled corner, rotated grid with a running-bond offset, 45° grid
-with offsets, and a mix) and compares the Tile Estimate for each against `baseline.json`. Run it after any change to how tiles
+`baseline.mjs` loads a set of layouts (rectangles, an L-shape, an island, an angled corner, running-bond and stepped offsets, herringbone
+straight, tall and at 45°, and mixes) and compares the Tile Estimate for each against `baseline.json`. Run it after any change to how tiles
 are laid out or counted; a difference means the counts changed.
 
 ```

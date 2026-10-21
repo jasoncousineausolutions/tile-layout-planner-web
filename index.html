@@ -1714,9 +1714,18 @@
                     </div>
                 </div>
                 
+                <div class="input-group">
+                    <label for="tilePattern">Pattern:</label>
+                    <select id="tilePattern">
+                        <option value="grid" selected>Grid (stacked or running bond)</option>
+                        <option value="stepped">Stepped offset</option>
+                        <option value="herringbone">Herringbone</option>
+                    </select>
+                </div>
+                
                 <div class="input-row">
-                    <div class="input-group">
-                        <label>Running Bond:</label>
+                    <div class="input-group" id="bondGroup">
+                        <label id="labelBond">Running Bond:</label>
                         <div class="combo-input-wrapper">
                             <input type="text" id="bondOffset" value="0" inputmode="decimal">
                             <button class="combo-dropdown-button" data-dropdown="bond">▼</button>
@@ -2249,6 +2258,8 @@
     // A pattern turns a rectangle of layout space into the tiles inside it. Layout space is the tile grid's own frame; the
     // layout's rotation and offset place it on the drawing. Every tile is an axis-aligned rectangle { x, y, w, h } in layout
     // space (before grout), so any pattern (running bond, herringbone, mixed sizes) reduces to a list of rectangles.
+    // Tiles also say `swap` when the layout's x axis runs along the tile's own height rather than its width (herringbone turns
+    // every other tile), so a cut can be matched to the right side of the real tile.
     const TILE_PATTERNS = {
         // Rows of one tile size. Every second row shifts by `bond` tile widths (0 = stacked, 0.5 = running bond).
         grid: {
@@ -2261,6 +2272,47 @@
                     const rowOffset = (((row % 2) + 2) % 2) * bond * effW;   // JS gives -1 for odd negative rows; they must shift like the positive ones
                     for (let col = startCol; col <= endCol; col++) {
                         tiles.push({ x: col * effW + rowOffset, y: row * effH, w: tileW, h: tileH });
+                    }
+                }
+                return tiles;
+            }
+        },
+        // Rows where each row shifts a further `bond` tile widths than the one before (0.3333: every third row lines up).
+        stepped: {
+            tilesIn(layout, minX, minY, maxX, maxY) {
+                const { tileW, tileH, effW, effH } = layout;
+                const step = Math.abs(layout.bond - 1 / 3) < 0.001 ? 1 / 3 : layout.bond;   // 0.3333 means a third exactly
+                const startCol = Math.floor(minX / effW) - 1, endCol = Math.ceil(maxX / effW) + 1;
+                const startRow = Math.floor(minY / effH) - 1, endRow = Math.ceil(maxY / effH) + 1;
+                const tiles = [];
+                for (let row = startRow; row <= endRow; row++) {
+                    const rowOffset = (((row * step) % 1) + 1) % 1 * effW;
+                    for (let col = startCol; col <= endCol; col++) {
+                        tiles.push({ x: col * effW + rowOffset, y: row * effH, w: tileW, h: tileH });
+                    }
+                }
+                return tiles;
+            }
+        },
+        // Straight herringbone: a flat tile with a standing tile against its right end, repeated down a diagonal, and the
+        // diagonals repeated side by side. Each tile sits in a box that is the tile plus one grout width on its right and
+        // bottom, so every joint is one grout wide. Turn the layout 45 degrees for the diagonal version.
+        herringbone: {
+            tilesIn(layout, minX, minY, maxX, maxY) {
+                const long = Math.max(layout.tileW, layout.tileH), short = Math.min(layout.tileW, layout.tileH);
+                const flatIsWidth = layout.tileW >= layout.tileH;
+                const Lp = long + layout.groutW, Wp = short + layout.groutW;
+                const pad = Lp + Wp;
+                // the diagonals are a = (Wp, Wp) apart along themselves and b = (Lp, -Lp) apart from each other
+                const ks = [], ms = [];
+                for (const X of [minX - pad, maxX + pad]) for (const Y of [minY - pad, maxY + pad]) { ks.push((X + Y) / (2 * Wp)); ms.push((X - Y) / (2 * Lp)); }
+                const tiles = [];
+                const touches = (x, y, w, h) => x < maxX && x + w > minX && y < maxY && y + h > minY;
+                for (let k = Math.floor(Math.min(...ks)) - 1; k <= Math.ceil(Math.max(...ks)) + 1; k++) {
+                    for (let m = Math.floor(Math.min(...ms)) - 1; m <= Math.ceil(Math.max(...ms)) + 1; m++) {
+                        const ox = k * Wp + m * Lp, oy = k * Wp - m * Lp;
+                        if (touches(ox, oy, Lp, Wp)) tiles.push({ x: ox, y: oy, w: long, h: short, swap: !flatIsWidth });
+                        if (touches(ox + Lp, oy + Wp - Lp, Wp, Lp)) tiles.push({ x: ox + Lp, y: oy + Wp - Lp, w: short, h: long, swap: flatIsWidth });
                     }
                 }
                 return tiles;
@@ -2687,6 +2739,7 @@
             this.tileDepthInches = 0.5;
             this.groutType = 'unknown';
             this.bondOffset = 0.0;
+            this.pattern = 'grid';
             this.rotationDegrees = 0;
             this.offsetXInches = 0.0;
             this.offsetYInches = 0.0;
@@ -2950,6 +3003,12 @@
                 document.getElementById(id).addEventListener('input', () => this.updateTileSettings(id));
             });
             document.getElementById('bondOffset').addEventListener('input', () => this.updateBondOffset());
+            document.getElementById('tilePattern').addEventListener('change', (e) => {
+                this.pattern = e.target.value;
+                this.updatePatternControls();
+                if (this.currentTab === 'finalize') this.updateTileCount();
+                this.redraw();
+            });
             document.getElementById('rotation').addEventListener('input', () => this.updateRotation());
             
             // Offset buttons with hold-to-repeat
@@ -3818,7 +3877,7 @@
                     for (const edge of cutEdges) {
                         const edgeLenIn = edge.length / CONFIG.PIXELS_PER_INCH;
                         const isWidthEdge = (edge.tileEdgeIndex === 0 || edge.tileEdgeIndex === 2);
-                        const fullDim = isWidthEdge ? fullWidthIn : fullHeightIn;
+                        const fullDim = (isWidthEdge ? tile.w : tile.h) / CONFIG.PIXELS_PER_INCH;
                         if (edgeLenIn < fullDim - tolerance && edgeLenIn > 0.05) {
                             if (isWidthEdge) widthCut = Math.min(widthCut || 999, edgeLenIn);
                             else heightCut = Math.min(heightCut || 999, edgeLenIn);
@@ -3851,9 +3910,9 @@
                     } else if (widthCut !== null && heightCut !== null) {
                         diagonalCuts++; // two-axis cut, can't pair
                     } else if (widthCut !== null) {
-                        widthCuts.push(widthCut);
+                        (tile.swap ? heightCuts : widthCuts).push(widthCut);   // a turned tile's x edge is its height
                     } else if (heightCut !== null) {
-                        heightCuts.push(heightCut);
+                        (tile.swap ? widthCuts : heightCuts).push(heightCut);
                     } else {
                         diagonalCuts++;
                     }
@@ -4146,6 +4205,12 @@
             this.redraw();
         }
 
+        // The offset box is Running Bond for a grid, Step for a stepped pattern, and not used by herringbone.
+        updatePatternControls() {
+            document.getElementById('labelBond').textContent = this.pattern === 'stepped' ? 'Step:' : 'Running Bond:';
+            document.getElementById('bondGroup').style.visibility = this.pattern === 'herringbone' ? 'hidden' : 'visible';
+        }
+
         updateBondOffset() {
             const value = parseFloat(document.getElementById('bondOffset').value);
             if (!isNaN(value) && value >= 0 && value <= 1) { this.bondOffset = value; this.redraw(); }
@@ -4222,6 +4287,7 @@
                     tileDepthInches: this.tileDepthInches,
                     groutType: this.groutType,
                     bondOffset: this.bondOffset,
+                    pattern: this.pattern,
                     rotationDegrees: this.rotationDegrees,
                     offsetXInches: this.offsetXInches,
                     offsetYInches: this.offsetYInches
@@ -4291,6 +4357,7 @@
                     if (typeof tl.tileDepthInches === 'number' && tl.tileDepthInches > 0) this.tileDepthInches = tl.tileDepthInches;
                     if (typeof tl.groutType === 'string') this.groutType = tl.groutType;
                     if (typeof tl.bondOffset === 'number') this.bondOffset = tl.bondOffset;
+                    this.pattern = typeof tl.pattern === 'string' && TILE_PATTERNS[tl.pattern] ? tl.pattern : 'grid';
                     if (typeof tl.rotationDegrees === 'number') this.rotationDegrees = tl.rotationDegrees;
                     if (typeof tl.offsetXInches === 'number') this.offsetXInches = tl.offsetXInches;
                     if (typeof tl.offsetYInches === 'number') this.offsetYInches = tl.offsetYInches;
@@ -4308,6 +4375,8 @@
                 document.getElementById('snapMode').value = this.snapMode;
                 document.getElementById('distanceTool').checked = this.distanceToolEnabled;
                 document.getElementById('bondOffset').value = this.bondOffset;
+                document.getElementById('tilePattern').value = this.pattern;
+                this.updatePatternControls();
                 document.getElementById('rotation').value = this.rotationDegrees;
                 document.getElementById('groutType').value = this.groutType;
                 const isMetricImport = this.unitMode === 'metric';
@@ -4739,7 +4808,7 @@
             const settings = [
                 `Tile ${fm(tileWIn)} × ${fm(tileHIn)}`,
                 `Grout ${fm(layout.groutW / ppi)}`,
-                this.bondOffset > 0 ? `Running bond offset ${this.bondOffset}` : 'Stacked rows',
+                this.pattern === 'herringbone' ? 'Herringbone' : this.pattern === 'stepped' ? `Stepped offset ${this.bondOffset}` : (this.bondOffset > 0 ? `Running bond offset ${this.bondOffset}` : 'Stacked rows'),
                 ...(this.rotationDegrees ? [`Rotated ${this.rotationDegrees}°`] : [])
             ].join('    ');
             c.fillStyle = MUTED; c.font = '30px sans-serif';
@@ -5782,7 +5851,7 @@
             const partialTiles = [];
             for (const tile of layout.tilesCovering(minX, minY, maxX, maxY, Math.max(effectiveTileW, effectiveTileH) * 2)) {
                 const tileInfo = this.analyzeTileIntersectionWithSurface(tile.corners, surface, tileW, tileH);
-                if (tileInfo && tileInfo.isPartial) partialTiles.push(tileInfo);
+                if (tileInfo && tileInfo.isPartial) { tileInfo.w = tile.w; tileInfo.h = tile.h; partialTiles.push(tileInfo); }
             }
             if (this.showCutMeasurements) {
                 this.drawPartialTileLabels(partialTiles, tileW, tileH);
@@ -5799,7 +5868,7 @@
         getLayout() {
             return new TileLayout({
                 tileW: this.tileWidthInches * CONFIG.PIXELS_PER_INCH, tileH: this.tileHeightInches * CONFIG.PIXELS_PER_INCH,
-                groutW: this.groutWidthInches * CONFIG.PIXELS_PER_INCH, bond: this.bondOffset,
+                pattern: this.pattern, groutW: this.groutWidthInches * CONFIG.PIXELS_PER_INCH, bond: this.bondOffset,
                 rotationRad: (this.rotationDegrees * Math.PI) / 180,
                 offsetX: this.offsetXInches * CONFIG.PIXELS_PER_INCH, offsetY: this.offsetYInches * CONFIG.PIXELS_PER_INCH
             });
@@ -5902,8 +5971,6 @@
 
         drawPartialTileLabels(partialTiles, tileW, tileH) {
             const ctx = this.ctx;
-            const fullWidthIn = tileW / CONFIG.PIXELS_PER_INCH;
-            const fullHeightIn = tileH / CONFIG.PIXELS_PER_INCH;
             const tolerance = 0.15; // inches
             
             // Collect all candidate labels first, then dedup
@@ -5911,6 +5978,7 @@
             
             for (const tile of partialTiles) {
                 if (!tile.cutEdges || tile.cutEdges.length === 0) continue;
+                const fullWidthIn = (tile.w || tileW) / CONFIG.PIXELS_PER_INCH, fullHeightIn = (tile.h || tileH) / CONFIG.PIXELS_PER_INCH;
                 
                 // Track which axes have a cut-edge label
                 let hasWidthCutLabel = false;
@@ -6349,7 +6417,7 @@
             const ctx = this.ctx;
             const layout = this.getLayout();
             if (!layout.isUsable()) return;
-            const { tileW, tileH, groutW, effW, effH, offsetX, offsetY, rotationRad } = layout;
+            const { groutW, effW, effH, offsetX, offsetY, rotationRad } = layout;
             
             const isTileMode = this.currentTab === 'tileLayout';
             const isSurfaceMode = this.currentTab === 'surfaceDesign';
@@ -6366,16 +6434,16 @@
             ctx.translate(offsetX, offsetY);
             ctx.rotate(rotationRad);
             
-            for (const { x, y } of layout.tilesCovering(bounds.minX - totalPadding, bounds.minY - totalPadding, bounds.maxX + totalPadding, bounds.maxY + totalPadding)) {
+            for (const { x, y, w, h } of layout.tilesCovering(bounds.minX - totalPadding, bounds.minY - totalPadding, bounds.maxX + totalPadding, bounds.maxY + totalPadding)) {
                 ctx.fillStyle = CONFIG.COLORS.TILE_FILL;
-                ctx.fillRect(x, y, tileW, tileH);
+                ctx.fillRect(x, y, w, h);
                 ctx.strokeStyle = CONFIG.COLORS.TILE_STROKE;
                 ctx.lineWidth = strokeWidth;
-                ctx.strokeRect(x, y, tileW, tileH);
+                ctx.strokeRect(x, y, w, h);
                 if (groutW > 0) {
                     ctx.fillStyle = CONFIG.COLORS.GROUT;
-                    ctx.fillRect(x + tileW, y, groutW, tileH + groutW);
-                    ctx.fillRect(x, y + tileH, tileW, groutW);
+                    ctx.fillRect(x + w, y, groutW, h + groutW);
+                    ctx.fillRect(x, y + h, w, groutW);
                 }
             }
             ctx.restore();

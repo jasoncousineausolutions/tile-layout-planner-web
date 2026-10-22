@@ -1222,7 +1222,7 @@
             background: var(--steel-blue);
         }
         .submenu-tree > :first-child::after { top: -4px; }
-        .submenu-tree > :last-child::after, .submenu-tree > .tree-last::after { bottom: 50%; }
+        .submenu-tree > :last-child::after { bottom: 50%; }
         
         /* A row of the tree holding a control: the name on the left, the control on the right */
         .submenu-tree > .tree-row {
@@ -1235,8 +1235,9 @@
         }
         .submenu-tree > .tree-row label { margin: 0; font-size: 13px; font-weight: 500; color: var(--slate-gray); }
         .submenu-tree > .tree-row select { flex: none; width: 56%; margin: 0; }
-        /* Items hanging under a row of the tree (the colours): indented, with no line to them */
+        /* Items hanging under a row of the tree (the colours): indented, with the tree's line passing them but no branch */
         .submenu-tree > .tree-sub {
+            position: relative;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -1244,8 +1245,15 @@
             padding: 4px 4px 4px 44px;
         }
         .submenu-tree > .tree-sub label { margin: 0; font-size: 13px; color: var(--slate-gray); }
-        .submenu-tree > button.reset-colors { padding-left: 44px; }
-        .submenu-tree > button.reset-colors::before, .submenu-tree > button.reset-colors::after { display: none; }
+        .submenu-tree > .tree-sub::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: var(--steel-blue);
+        }
         .submenu-tree > .tree-row input[type="color"], .submenu-tree > .tree-sub input[type="color"] { flex: none; width: 44px; height: 26px; padding: 0; border: 1px solid var(--light-gray); border-radius: 3px; background: none; cursor: pointer; }
         
         /* Mobile links footer (hidden on desktop) */
@@ -3043,7 +3051,7 @@
             });
             const colorBoxes = [];
             document.querySelectorAll('.display-colors').forEach(placeholder => {
-                const heading = document.createElement('div'); heading.className = 'tree-row tree-last';   // the tree ends here; the colours hang under it
+                const heading = document.createElement('div'); heading.className = 'tree-row';   // the colours hang under it; the tree's line runs past them to Reset colours
                 const headingLabel = document.createElement('label'); headingLabel.textContent = 'Colours';
                 heading.appendChild(headingLabel);
                 const rows = DISPLAY_COLOR_NAMES.map(([key, name]) => {

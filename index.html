@@ -1883,6 +1883,7 @@
                         <label for="unitModeMobile">Units</label>
                         <select id="unitModeMobile">
                             <option value="metric">Metric (mm)</option>
+                            <option value="metricCm">Metric (cm)</option>
                             <option value="decimal2" selected>Inches (0.00")</option>
                             <option value="decimal3">Inches (0.000")</option>
                             <option value="eighth">Inches (1/8")</option>
@@ -2072,6 +2073,7 @@
                         <label for="unitMode">Units</label>
                         <select id="unitMode">
                         <option value="metric">Metric (mm)</option>
+                            <option value="metricCm">Metric (cm)</option>
                         <option value="decimal2" selected>Inches (0.00")</option>
                         <option value="decimal3">Inches (0.000")</option>
                         <option value="eighth">Inches (1/8")</option>
@@ -2651,6 +2653,8 @@
             str = str.slice(0, -1).trim();
         } else if (!hasExplicitUnit && currentUnitMode === 'metric') {
             unitMultiplier = 1.0 / CONFIG.MM_PER_INCH;
+        } else if (!hasExplicitUnit && currentUnitMode === 'metricCm') {
+            unitMultiplier = 1.0 / CONFIG.CM_PER_INCH;
         }
         
         str = str.replace(/\s+/g, ' ');
@@ -2679,9 +2683,19 @@
         return NaN;
     }
 
+    function isMetricMode(unitMode) { return unitMode === 'metric' || unitMode === 'metricCm'; }
+
+    // A length as it is written in an input box: millimetres, centimetres or inches.
+    function fieldLength(inches, unitMode) {
+        if (unitMode === 'metric') return (inches * CONFIG.MM_PER_INCH).toFixed(1);
+        if (unitMode === 'metricCm') return (inches * CONFIG.CM_PER_INCH).toFixed(2);
+        return inches.toFixed(3);
+    }
+
     function formatMeasurement(inches, unitMode) {
         if (!isFinite(inches)) return '---';
         if (unitMode === 'metric') return (inches * CONFIG.MM_PER_INCH).toFixed(1) + ' mm';
+        if (unitMode === 'metricCm') return (inches * CONFIG.CM_PER_INCH).toFixed(1) + ' cm';
         if (unitMode === 'decimal2') return inches.toFixed(2) + '"';
         if (unitMode === 'decimal3') return inches.toFixed(3) + '"';
         const denominatorMap = { 'eighth': 8, 'sixteenth': 16, 'thirtysecond': 32, 'sixtyfourth': 64 };
@@ -3285,7 +3299,7 @@
                     else if (input.id === 'rotation') this.rotationDegrees = value;
                     else if (input.id === 'groutWidth') {
                         this.groutWidthInches = value;
-                        if (this.unitMode === 'metric') input.value = (value * CONFIG.MM_PER_INCH).toFixed(1);
+                        if (isMetricMode(this.unitMode)) input.value = fieldLength(value, this.unitMode);
                     }
                     this.redraw();
                 });
@@ -3333,7 +3347,7 @@
             document.querySelectorAll('#tileDepthDropdownMenu .combo-dropdown-item').forEach(item => {
                 item.addEventListener('click', () => {
                     const val = parseFloat(item.dataset.value);
-                    document.getElementById('tileDepth').value = this.unitMode === 'metric' ? (val * CONFIG.MM_PER_INCH).toFixed(1) : val;
+                    document.getElementById('tileDepth').value = isMetricMode(this.unitMode) ? fieldLength(val, this.unitMode) : val;
                     this.tileDepthInches = val;
                     document.getElementById('tileDepthDropdownMenu').style.display = 'none';
                     if (this.currentTab === 'finalize') this.updateTileCount();
@@ -4084,7 +4098,7 @@
                 const surface = this.detectedSurfaces[surfaceIdx];
                 if (surface) totalAreaSqIn += this.computeSurfaceArea(surface);
             }
-            const isMetric = this.unitMode === 'metric';
+            const isMetric = isMetricMode(this.unitMode);
             let areaStr;
             if (isMetric) {
                 // square inches to square meters: 1 sq in = 0.00064516 sq m
@@ -4277,7 +4291,7 @@
         }
 
         updateFieldLabels() {
-            const suffix = this.unitMode === 'metric' ? ' (mm):' : ' (in):';
+            const suffix = this.unitMode === 'metric' ? ' (mm):' : this.unitMode === 'metricCm' ? ' (cm):' : ' (in):';
             document.getElementById('labelTileWidth').textContent = 'Width' + suffix;
             document.getElementById('labelTileHeight').textContent = 'Height' + suffix;
             document.getElementById('labelGroutWidth').textContent = 'Grout Width' + suffix;
@@ -4295,8 +4309,7 @@
         }
 
         updateTileInputFields() {
-            const isMetric = this.unitMode === 'metric';
-            const format = (inches) => isMetric ? (inches * CONFIG.MM_PER_INCH).toFixed(1) : inches.toFixed(3);
+            const format = (inches) => fieldLength(inches, this.unitMode);
             document.getElementById('tileWidth').value = format(this.tileWidthInches);
             document.getElementById('tileHeight').value = format(this.tileHeightInches);
             document.getElementById('groutWidth').value = format(this.groutWidthInches);
@@ -4328,13 +4341,11 @@
             if (!isNaN(offY)) this.offsetYInches = offY;
             // Sync finalize offset fields without overwriting the field being edited
             if (sourceId !== 'finalizeOffsetX' && sourceId !== 'finalizeOffsetY') {
-                const isMetric = this.unitMode === 'metric';
-                const format = (inches) => isMetric ? (inches * CONFIG.MM_PER_INCH).toFixed(1) : inches.toFixed(3);
+                const format = (inches) => fieldLength(inches, this.unitMode);
                 document.getElementById('finalizeOffsetX').value = format(this.offsetXInches);
                 document.getElementById('finalizeOffsetY').value = format(this.offsetYInches);
             } else {
-                const isMetric = this.unitMode === 'metric';
-                const format = (inches) => isMetric ? (inches * CONFIG.MM_PER_INCH).toFixed(1) : inches.toFixed(3);
+                const format = (inches) => fieldLength(inches, this.unitMode);
                 document.getElementById('offsetX').value = format(this.offsetXInches);
                 document.getElementById('offsetY').value = format(this.offsetYInches);
             }
@@ -4379,8 +4390,7 @@
             readout.value = weaving && this.weaveCount() >= 2 ? String(this.weaveCount()) : '\u2014';
             const groutInput = document.getElementById('groutWidth'), groutButton = document.querySelector('[data-dropdown="grout"]');
             const hint = document.getElementById('weaveHint');
-            const isMetric = this.unitMode === 'metric';
-            const format = (inches) => isMetric ? (inches * CONFIG.MM_PER_INCH).toFixed(1) : inches.toFixed(3);
+            const format = (inches) => fieldLength(inches, this.unitMode);
             const fit = weaving ? this.weaveGrout() : null;
             const locked = weaving && fit.ok;
             groutInput.disabled = locked;
@@ -4566,8 +4576,7 @@
                 this.updatePatternControls();
                 document.getElementById('rotation').value = this.rotationDegrees;
                 document.getElementById('groutType').value = this.groutType;
-                const isMetricImport = this.unitMode === 'metric';
-                document.getElementById('tileDepth').value = isMetricImport ? (this.tileDepthInches * CONFIG.MM_PER_INCH).toFixed(1) : this.tileDepthInches;
+                document.getElementById('tileDepth').value = isMetricMode(this.unitMode) ? fieldLength(this.tileDepthInches, this.unitMode) : this.tileDepthInches;
                 this.updateFieldLabels();
                 this.updateTileInputFields();
                 

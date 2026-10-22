@@ -282,6 +282,31 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['ph
     expect(r2.ok && r2.pattern === 'grid' && r2.v === 8, 'a file from the future should load as a grid: ' + JSON.stringify(r2));
     expect(page.errors.length === 0, page.errors.join(' | '));
   });
+  await step('metric (cm): labels, boxes and the estimate use centimetres, typing a bare number means cm, and it saves and loads', async () => {
+    await page.evaluate(() => { const k = 10.8, p = (x, y) => ({ x: x * k, y: y * k }); app.importDesign(JSON.stringify({ format: 'tile-planner-design', version: '1.1', appState: { unitMode: 'decimal2', currentTab: 'tileLayout', zoom: 1, panX: 0, panY: 0 }, tileLayout: { tileWidthInches: 24, tileHeightInches: 12, groutWidthInches: 0.125, tileDepthInches: 0.5, groutType: 'sanded', bondOffset: 0, rotationDegrees: 0, offsetXInches: 0, offsetYInches: 0 }, surface: { vertices: [p(0, 0), p(50, 0), p(50, 38), p(0, 38)], lines: [[0, 1], [1, 2], [2, 3], [3, 0]] } })); });
+    await page.evaluate(() => { const el = document.getElementById('unitMode'); el.value = 'metricCm'; el.dispatchEvent(new Event('change', { bubbles: true })); });
+    await page.waitForTimeout(200);
+    let r = await page.evaluate(() => ({ unit: app.unitMode, mobile: document.getElementById('unitModeMobile').value, label: document.getElementById('labelTileWidth').textContent, width: document.getElementById('tileWidth').value, fm: formatMeasurement(12, 'metricCm') }));
+    expect(r.unit === 'metricCm' && r.mobile === 'metricCm' && /\(cm\)/.test(r.label) && r.width === '60.96' && r.fm === '30.5 cm', 'centimetre display is wrong: ' + JSON.stringify(r));
+    // a bare number typed into a box is centimetres
+    await page.evaluate(() => { const el = document.getElementById('tileWidth'); el.value = '30'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    expect(Math.abs((await page.evaluate(() => app.tileWidthInches)) - 30 / 2.54) < 1e-9, 'a bare 30 in the width box should be 30 cm');
+    // an explicit unit still wins
+    await page.evaluate(() => { const el = document.getElementById('tileWidth'); el.value = '10"'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    expect(Math.abs((await page.evaluate(() => app.tileWidthInches)) - 10) < 1e-9, '10" should stay 10 inches');
+    await page.click('.tab[data-tab="finalize"]'); await page.waitForTimeout(250);
+    await page.evaluate(() => { app.selectedSurfaces = [0]; app.updateTileCount(); });
+    const est = await page.evaluate(() => document.getElementById('tileCountSummary').innerText);
+    expect(/m\u00B2/.test(est) && /kg/.test(est), 'the estimate should be in m2 and kg: ' + est);
+    const saved = await page.evaluate(() => app.exportDesign());
+    expect(JSON.parse(saved).appState.unitMode === 'metricCm', 'the unit was not saved');
+    await page.evaluate(() => { const el = document.getElementById('unitMode'); el.value = 'decimal2'; el.dispatchEvent(new Event('change', { bubbles: true })); });
+    await page.evaluate((j) => app.importDesign(j), saved);
+    r = await page.evaluate(() => ({ unit: app.unitMode, sel: document.getElementById('unitMode').value }));
+    expect(r.unit === 'metricCm' && r.sel === 'metricCm', 'loading did not restore centimetres: ' + JSON.stringify(r));
+    await page.evaluate(() => { const el = document.getElementById('unitMode'); el.value = 'decimal2'; el.dispatchEvent(new Event('change', { bubbles: true })); });
+    expect(page.errors.length === 0, page.errors.join(' | '));
+  });
   await step('finalize: dragging the canvas pans it, a plain click still selects, the middle button pans anywhere', async () => {
     const phone = await page.evaluate(() => innerWidth <= 800);
     if (phone) return;   // touch has its own pan and pinch

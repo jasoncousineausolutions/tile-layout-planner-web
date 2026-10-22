@@ -1724,15 +1724,6 @@
                     </select>
                 </div>
                 
-                <div class="input-group" id="weaveGroup" style="display: none;">
-                    <label for="weaveCount">Tiles per block:</label>
-                    <select id="weaveCount">
-                        <option value="2" selected>2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                    </select>
-                </div>
-                
                 <div class="input-row">
                     <div class="input-group" id="bondGroup">
                         <label id="labelBond">Running Bond:</label>
@@ -2333,8 +2324,9 @@
     };
 
     // Basketweave: square blocks in a checkerboard, each block `weave` tiles side by side, flat in one block and standing in the
-    // next. The blocks only meet if the tile's length is (width x weave) + (grout x (weave - 1)), so the grout is worked out from
-    // the tile (see TileApp.weaveGrout). A tile too short for the number per block is laid as a plain grid.
+    // next. The blocks only meet if the tile's length is (width x weave) + (grout x (weave - 1)). `weave` is how many widths fit in
+    // the length and the grout is worked out to match (see TileApp.weaveCount and weaveGrout). A tile less than twice as long as
+    // it is wide is laid as a plain grid.
     TILE_PATTERNS.basketweave = {
         tilesIn(layout, minX, minY, maxX, maxY) {
             const n = layout.weave;
@@ -2779,7 +2771,6 @@
             this.groutType = 'unknown';
             this.bondOffset = 0.0;
             this.pattern = 'grid';
-            this.weave = 2;   // tiles per block in a basketweave
             this.rotationDegrees = 0;
             this.offsetXInches = 0.0;
             this.offsetYInches = 0.0;
@@ -3043,12 +3034,6 @@
                 document.getElementById(id).addEventListener('input', () => this.updateTileSettings(id));
             });
             document.getElementById('bondOffset').addEventListener('input', () => this.updateBondOffset());
-            document.getElementById('weaveCount').addEventListener('change', (e) => {
-                this.weave = parseInt(e.target.value, 10);
-                this.updatePatternControls();
-                if (this.currentTab === 'finalize') this.updateTileCount();
-                this.redraw();
-            });
             document.getElementById('tilePattern').addEventListener('change', (e) => {
                 this.pattern = e.target.value;
                 this.updatePatternControls();
@@ -4262,12 +4247,19 @@
             this.redraw();
         }
 
+        // Tiles per block in a basketweave: as many as fit side by side in the tile's length, so a tile 3.2 widths long
+        // makes blocks of 3. Under 2 means the tile is too short to weave.
+        weaveCount() {
+            const long = Math.max(this.tileWidthInches, this.tileHeightInches), short = Math.min(this.tileWidthInches, this.tileHeightInches);
+            return Math.floor(long / short + 1e-9);
+        }
+
         // The grout a basketweave needs so its blocks meet: tile length = (width x n) + (grout x (n - 1)).
         weaveGrout() {
-            const n = this.weave;
+            const n = this.weaveCount();
             const long = Math.max(this.tileWidthInches, this.tileHeightInches), short = Math.min(this.tileWidthInches, this.tileHeightInches);
-            if (long < n * short - 1e-6) return { ok: false, needed: n * short };
-            return { ok: true, grout: (long - n * short) / (n - 1) };
+            if (n < 2) return { ok: false, needed: 2 * short };
+            return { ok: true, n, grout: Math.max(0, (long - n * short) / (n - 1)) };
         }
 
         // The grout width in use: the one typed in, except that a basketweave works it out from the tile.
@@ -4285,7 +4277,6 @@
             const weaving = this.pattern === 'basketweave';
             document.getElementById('labelBond').textContent = this.pattern === 'stepped' ? 'Step:' : 'Running Bond:';
             document.getElementById('bondGroup').style.visibility = (this.pattern === 'herringbone' || weaving) ? 'hidden' : 'visible';
-            document.getElementById('weaveGroup').style.display = weaving ? '' : 'none';
             const groutInput = document.getElementById('groutWidth'), groutButton = document.querySelector('[data-dropdown="grout"]');
             const hint = document.getElementById('weaveHint');
             const isMetric = this.unitMode === 'metric';
@@ -4300,11 +4291,11 @@
             hint.style.display = '';
             if (!fit.ok) {
                 hint.style.color = '#BF616A';
-                hint.textContent = 'These tiles are too short for ' + this.weave + ' per block: the length must be at least ' + this.weave + ' times the width. Laid as a plain grid until then.';
+                hint.textContent = 'A basketweave needs a tile at least twice as long as it is wide. Laid as a plain grid until then.';
             } else {
                 hint.style.color = '';
                 const wide = fit.grout > 0.5 ? ' That is wider than usual; try another tile size or number per block.' : '';
-                hint.textContent = 'Basketweave blocks only meet when the tile length is the width \u00D7 ' + this.weave + ' plus the grout \u00D7 ' + (this.weave - 1) + ', so the grout is set to ' + formatMeasurement(fit.grout, this.unitMode) + ' for this tile.' + wide;
+                hint.textContent = fit.n + ' tiles per block. The blocks only meet when the tile length is the width \u00D7 ' + fit.n + ' plus the grout \u00D7 ' + (fit.n - 1) + ', so the grout is set to ' + formatMeasurement(fit.grout, this.unitMode) + ' for this tile.' + wide;
             }
         }
 
@@ -4385,7 +4376,6 @@
                     groutType: this.groutType,
                     bondOffset: this.bondOffset,
                     pattern: this.pattern,
-                    weave: this.weave,
                     rotationDegrees: this.rotationDegrees,
                     offsetXInches: this.offsetXInches,
                     offsetYInches: this.offsetYInches
@@ -4456,7 +4446,6 @@
                     if (typeof tl.groutType === 'string') this.groutType = tl.groutType;
                     if (typeof tl.bondOffset === 'number') this.bondOffset = tl.bondOffset;
                     this.pattern = typeof tl.pattern === 'string' && TILE_PATTERNS[tl.pattern] ? tl.pattern : 'grid';
-                    if ([2, 3, 4].includes(tl.weave)) this.weave = tl.weave;
                     if (typeof tl.rotationDegrees === 'number') this.rotationDegrees = tl.rotationDegrees;
                     if (typeof tl.offsetXInches === 'number') this.offsetXInches = tl.offsetXInches;
                     if (typeof tl.offsetYInches === 'number') this.offsetYInches = tl.offsetYInches;
@@ -4475,7 +4464,6 @@
                 document.getElementById('distanceTool').checked = this.distanceToolEnabled;
                 document.getElementById('bondOffset').value = this.bondOffset;
                 document.getElementById('tilePattern').value = this.pattern;
-                document.getElementById('weaveCount').value = String(this.weave);
                 this.updatePatternControls();
                 document.getElementById('rotation').value = this.rotationDegrees;
                 document.getElementById('groutType').value = this.groutType;
@@ -4926,7 +4914,7 @@
             const settings = [
                 `Tile ${fm(tileWIn)} × ${fm(tileHIn)}`,
                 `Grout ${fm(layout.groutW / ppi)}`,
-                this.pattern === 'herringbone' ? 'Herringbone' : this.pattern === 'basketweave' ? `Basketweave, ${this.weave} per block` : this.pattern === 'stepped' ? `Stepped offset ${this.bondOffset}` : (this.bondOffset > 0 ? `Running bond offset ${this.bondOffset}` : 'Stacked rows'),
+                this.pattern === 'herringbone' ? 'Herringbone' : this.pattern === 'basketweave' ? `Basketweave, ${this.weaveCount()} per block` : this.pattern === 'stepped' ? `Stepped offset ${this.bondOffset}` : (this.bondOffset > 0 ? `Running bond offset ${this.bondOffset}` : 'Stacked rows'),
                 ...(this.rotationDegrees ? [`Rotated ${this.rotationDegrees}°`] : [])
             ].join('    ');
             c.fillStyle = MUTED; c.font = '30px sans-serif';
@@ -5991,7 +5979,7 @@
         getLayout() {
             return new TileLayout({
                 tileW: this.tileWidthInches * CONFIG.PIXELS_PER_INCH, tileH: this.tileHeightInches * CONFIG.PIXELS_PER_INCH,
-                pattern: this.pattern, groutW: this.effectiveGrout() * CONFIG.PIXELS_PER_INCH, bond: this.bondOffset, weave: this.weave,
+                pattern: this.pattern, groutW: this.effectiveGrout() * CONFIG.PIXELS_PER_INCH, bond: this.bondOffset, weave: this.weaveCount(),
                 rotationRad: (this.rotationDegrees * Math.PI) / 180,
                 offsetX: this.offsetXInches * CONFIG.PIXELS_PER_INCH, offsetY: this.offsetYInches * CONFIG.PIXELS_PER_INCH
             });

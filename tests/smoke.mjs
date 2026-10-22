@@ -245,6 +245,15 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['ph
     expect(r.locked && r.n === 3, 'loading did not restore the basketweave');
     expect(page.errors.length === 0, page.errors.join(' | '));
   });
+  await step('saved designs: a file saved by the 1.28 app loads, and an unknown pattern or extra fields are ignored safely', async () => {
+    const oldFile = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), 'fixtures', 'design-from-1.28.json'), 'utf8');
+    const r = await page.evaluate((j) => { const res = app.importDesign(j); return { ok: res.success, pattern: app.pattern, bond: app.bondOffset, rot: app.rotationDegrees, v: app.vertices.length, unit: app.unitMode, w: app.tileWidthInches, h: app.tileHeightInches }; }, oldFile);
+    expect(r.ok && r.pattern === 'grid' && r.bond === 0.33 && r.rot === 15 && r.v === 8 && r.unit === 'sixteenth' && r.w === 24 && r.h === 12, 'the 1.28 file did not load as saved: ' + JSON.stringify(r));
+    const odd = JSON.parse(oldFile); odd.tileLayout.pattern = 'zigzag-from-the-future'; odd.tileLayout.somethingNew = { a: 1 }; odd.appState.alsoNew = true; odd.extraTopLevel = [1, 2];
+    const r2 = await page.evaluate((j) => { const res = app.importDesign(j); return { ok: res.success, pattern: app.pattern, v: app.vertices.length }; }, JSON.stringify(odd));
+    expect(r2.ok && r2.pattern === 'grid' && r2.v === 8, 'a file from the future should load as a grid: ' + JSON.stringify(r2));
+    expect(page.errors.length === 0, page.errors.join(' | '));
+  });
   await step('finalize: dragging the canvas pans it, a plain click still selects, the middle button pans anywhere', async () => {
     const phone = await page.evaluate(() => innerWidth <= 800);
     if (phone) return;   // touch has its own pan and pinch

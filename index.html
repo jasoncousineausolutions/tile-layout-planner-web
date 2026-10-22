@@ -178,6 +178,18 @@
             background: rgba(191, 97, 106, 0.1);
         }
         
+        /* A value the app works out, shown but not editable */
+        input:disabled {
+            background: var(--light-gray);
+            color: var(--steel-blue);
+            opacity: 0.8;
+            cursor: not-allowed;
+        }
+        .combo-input-wrapper input:disabled + .combo-dropdown-button {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        
         /* Toggle button group (segmented control) */
         .toggle-group {
             display: flex;

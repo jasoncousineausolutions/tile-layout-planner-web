@@ -694,8 +694,9 @@
             border-radius: 8px;
             padding: var(--space-lg);
             width: 100%;
-            max-width: 600px;
+            max-width: 480px;
             max-height: 90vh;
+            overflow-y: auto;
             display: flex;
             flex-direction: column;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
@@ -715,10 +716,24 @@
             line-height: 1.5;
         }
         
+        .file-action { margin-bottom: var(--space-md); }
+        .file-action button { margin-bottom: var(--space-xs); }
+        .file-action .hint-text { margin: 0; }
+        
+        #saveLoadText { margin-bottom: var(--space-sm); }
+        #saveLoadText summary {
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--steel-blue);
+            padding: var(--space-xs) 0;
+        }
+        #saveLoadTextButtons { display: flex; gap: var(--space-sm); flex-wrap: wrap; }
+        #saveLoadTextButtons button { width: auto; padding: 8px 16px; margin: 0; }
+        
         #saveLoadTextarea {
             width: 100%;
-            flex: 1;
-            min-height: 200px;
+            min-height: 160px;
             padding: var(--space-sm);
             font-family: monospace;
             font-size: 11px;
@@ -754,6 +769,11 @@
         }
         
         #saveLoadLoad {
+            background: var(--electric-blue);
+            color: var(--white);
+            border-color: var(--electric-blue);
+        }
+        #saveToFile {
             background: var(--electric-blue);
             color: var(--white);
             border-color: var(--electric-blue);
@@ -1675,15 +1695,28 @@
     <div id="saveLoadOverlay">
         <div id="saveLoadDialog">
             <div id="saveLoadTitle">Save / Load Design</div>
-            <div id="saveLoadInstructions">
-                <strong>To save:</strong> Copy the text below and paste it somewhere safe (note, email, etc.)<br>
-                <strong>To load:</strong> Paste a previously saved design over the text below, then click Load.
+            <div class="file-action">
+                <button id="saveToFile" class="primary">Save to file</button>
+                <p class="hint-text">Saves the design as a file you can open here later, or on another device.</p>
             </div>
-            <textarea id="saveLoadTextarea" spellcheck="false"></textarea>
+            <div class="file-action">
+                <button id="openFile">Open file</button>
+                <p class="hint-text">Opens a design saved from the planner. It replaces the drawing you have now.</p>
+                <input type="file" id="designFile" accept=".json,application/json,text/plain" style="display: none;">
+            </div>
+            <details id="saveLoadText">
+                <summary>Design as text</summary>
+                <div id="saveLoadInstructions">
+                    Copy the text to keep it in a note or email. To load a design from text, paste it over the text below and press Load from text.
+                </div>
+                <textarea id="saveLoadTextarea" spellcheck="false"></textarea>
+                <div id="saveLoadTextButtons">
+                    <button id="saveLoadCopy">Copy to Clipboard</button>
+                    <button id="saveLoadLoad">Load from text</button>
+                </div>
+            </details>
             <div id="saveLoadStatus"></div>
             <div id="saveLoadButtons">
-                <button id="saveLoadCopy">Copy to Clipboard</button>
-                <button id="saveLoadLoad">Load</button>
                 <button id="saveLoadClose">Close</button>
             </div>
         </div>
@@ -3166,6 +3199,13 @@
                     status.className = 'error';
                 }
             });
+            document.getElementById('saveToFile').addEventListener('click', () => this.saveDesignFile());
+            document.getElementById('openFile').addEventListener('click', () => document.getElementById('designFile').click());
+            document.getElementById('designFile').addEventListener('change', (e) => {
+                const file = e.target.files && e.target.files[0];
+                e.target.value = '';   // so the same file can be opened again
+                if (file) this.openDesignFile(file);
+            });
             document.getElementById('saveLoadLoad').addEventListener('click', () => {
                 const textarea = document.getElementById('saveLoadTextarea');
                 const status = document.getElementById('saveLoadStatus');
@@ -4310,8 +4350,8 @@
                 hint.style.color = '#BF616A';
                 hint.textContent = 'A basketweave needs a tile at least twice as long as it is wide.';
             } else {
-                hint.style.color = '';
-                hint.textContent = 'Grout is set by the tile size.';
+                hint.textContent = '';
+                hint.style.display = 'none';
             }
         }
 
@@ -4787,11 +4827,60 @@
             }
         }
 
+        saveLoadStatus(text, kind) {
+            const status = document.getElementById('saveLoadStatus');
+            status.textContent = text;
+            status.className = kind || '';
+        }
+
+        // Saves the design as a .json file: the app shares it (save to Files, Drive, email); a browser downloads it.
+        async saveDesignFile() {
+            const json = this.exportDesign();
+            const name = 'tile-design-' + new Date().toISOString().slice(0, 10) + '.json';
+            try {
+                const cap = window.Capacitor;
+                const { Filesystem, Share } = (cap && cap.Plugins) || {};
+                if (Filesystem && Share) {
+                    const result = await Filesystem.writeFile({ path: name, data: json, directory: 'CACHE', encoding: 'utf8' });
+                    await Share.share({ title: 'Tile design', text: 'Tile design from JCS Tile Planner', url: result.uri, dialogTitle: 'Save or send the design' });
+                    this.saveLoadStatus('', '');
+                    return;
+                }
+                const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+                const a = document.createElement('a');
+                a.href = url; a.download = name;
+                document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                this.saveLoadStatus('Saved ' + name + '.', 'success');
+            } catch (e) {
+                this.saveLoadStatus('Could not save the file: ' + e.message + '. The design text below can still be copied.', 'error');
+                document.getElementById('saveLoadText').open = true;
+            }
+        }
+
+        // Loads a design from a file chosen with the file picker.
+        openDesignFile(file) {
+            if (this.vertices.length > 0 && !confirm('This replaces the surface you have drawn now. Open the file anyway?')) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                const result = this.importDesign(String(reader.result));
+                if (result.success) {
+                    this.saveLoadStatus('Design loaded.', 'success');
+                    setTimeout(() => { document.getElementById('saveLoadOverlay').style.display = 'none'; }, 800);
+                } else {
+                    this.saveLoadStatus(result.error, 'error');
+                }
+            };
+            reader.onerror = () => this.saveLoadStatus('Could not read that file.', 'error');
+            reader.readAsText(file);
+        }
+
         openSaveLoadDialog() {
             const overlay = document.getElementById('saveLoadOverlay');
             const textarea = document.getElementById('saveLoadTextarea');
             const status = document.getElementById('saveLoadStatus');
             textarea.value = this.exportDesign();
+            document.getElementById('saveLoadText').open = false;
             status.textContent = '';
             status.className = '';
             overlay.style.display = 'flex';

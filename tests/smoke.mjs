@@ -118,18 +118,46 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['ph
     expect((await state(page)).l === linesBefore + 1, 'diagonal line was not added');
   });
 
-  await step('Save / Load round trip keeps the design', async () => {
+  await step('Save / Load round trip keeps the design (through a file, and through the text)', async () => {
     const before = await page.evaluate(() => JSON.stringify({ v: app.vertices, l: app.lines }));
     await page.evaluate(() => document.getElementById('btnSaveLoad').click());
     await page.waitForSelector('#saveLoadDialog', { state: 'visible' });
+    expect(!(await page.isVisible('#saveLoadTextarea')), 'the design text should start collapsed');
+    // save to a file
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#saveToFile')]);
+    expect(/^tile-design-\d{4}-\d{2}-\d{2}\.json$/.test(download.suggestedFilename()), 'unexpected file name ' + download.suggestedFilename());
+    const savedPath = path.join(path.dirname(new URL(import.meta.url).pathname), '.saved-design.json');
+    await download.saveAs(savedPath);
+    const fileText = fs.readFileSync(savedPath, 'utf8');
+    expect(JSON.parse(fileText).format === 'tile-planner-design', 'the saved file is not a design');
+    // the text is there when asked for
+    await page.click('#saveLoadText summary');
+    expect(await page.isVisible('#saveLoadTextarea'), 'the design text did not open');
     const saved = await page.inputValue('#saveLoadTextarea');
+    expect(JSON.parse(saved).surface.vertices.length === JSON.parse(fileText).surface.vertices.length, 'file and text differ');
     await page.click('#saveLoadClose');
+    // open the file after clearing
     await page.evaluate(() => app.clearAll());
     expect((await state(page)).v === 0, 'clear all failed');
     await page.evaluate(() => document.getElementById('btnSaveLoad').click());
+    await page.setInputFiles('#designFile', savedPath); await page.waitForTimeout(1200);
+    let after = await page.evaluate(() => JSON.stringify({ v: app.vertices, l: app.lines }));
+    expect(after === before, 'design changed after save to file and open file');
+    fs.unlinkSync(savedPath);
+    // a file that is not a design is refused with a message
+    await page.evaluate(() => document.getElementById('btnSaveLoad').click());
+    fs.writeFileSync(savedPath, 'this is not a design');
+    await page.setInputFiles('#designFile', savedPath); await page.waitForTimeout(500);
+    expect((await page.textContent('#saveLoadStatus')).length > 0 && (await page.evaluate(() => app.vertices.length)) > 0, 'a bad file should show a message and leave the drawing alone');
+    fs.unlinkSync(savedPath);
+    // the text route still works
+    await page.click('#saveLoadClose');
+    await page.evaluate(() => app.clearAll());
+    await page.evaluate(() => document.getElementById('btnSaveLoad').click());
+    await page.click('#saveLoadText summary');
     await page.fill('#saveLoadTextarea', saved); await page.click('#saveLoadLoad'); await page.waitForTimeout(1000);
-    const after = await page.evaluate(() => JSON.stringify({ v: app.vertices, l: app.lines }));
-    expect(after === before, 'design changed after save and load');
+    after = await page.evaluate(() => JSON.stringify({ v: app.vertices, l: app.lines }));
+    expect(after === before, 'design changed after save and load as text');
   });
 
   await step('switching to metric and back does not break anything', async () => {
@@ -220,7 +248,7 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['ph
     const read = () => page.evaluate(() => ({ grout: document.getElementById('groutWidth').value, locked: document.getElementById('groutWidth').disabled, hint: document.getElementById('weaveHint').textContent, readout: document.getElementById('weaveReadout').value, label: document.getElementById('labelBond').textContent, stored: app.groutWidthInches, used: app.effectiveGrout(), n: app.weaveCount() }));
     await set('tilePattern', 'basketweave');
     let r = await read();
-    expect(r.locked && r.n === 2 && Math.abs(r.used) < 1e-9 && /^0\.0+$/.test(r.grout) && r.readout === '2' && r.label === 'Tiles per block:' && /Grout is set/.test(r.hint), '4 x 8 tiles make blocks of 2 with no grout: ' + JSON.stringify(r));
+    expect(r.locked && r.n === 2 && Math.abs(r.used) < 1e-9 && /^0\.0+$/.test(r.grout) && r.readout === '2' && r.label === 'Tiles per block:' && r.hint === '', '4 x 8 tiles make blocks of 2 with no grout: ' + JSON.stringify(r));
     expect(Math.abs(r.stored - 0.125) < 1e-9, 'the grout you typed should be kept for when you leave basketweave: ' + r.stored);
     await set('tileHeight', '9');
     r = await read();

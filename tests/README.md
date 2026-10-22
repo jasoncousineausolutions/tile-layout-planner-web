@@ -25,3 +25,12 @@ are laid out or counted; a difference means the counts changed.
 node tests/baseline.mjs index.html            # compare
 node tests/baseline.mjs --write index.html    # re-record, only when a change in the counts is intended
 ```
+
+# Keeping old designs working
+
+A design saved by any released version must open in every later version. `fixtures/` holds a file saved by each release
+(`design-from-1.28.json` so far) and the smoke test loads it and checks that everything came back. When a release changes what
+a design contains, save a design from that release into `fixtures/` before changing the format again, and add a check for it.
+The loader ignores fields it does not know and treats a missing field as its old default, so new settings are added as
+optional fields rather than by changing the meaning of existing ones. Opening a new file in an older app is not supported:
+it loads, but anything the old app does not know about is dropped.

@@ -1727,7 +1727,8 @@
                 <div class="input-row">
                     <div class="input-group" id="bondGroup">
                         <label id="labelBond">Running Bond:</label>
-                        <div class="combo-input-wrapper">
+                        <input type="text" id="weaveReadout" disabled style="display: none;" aria-label="Tiles per block">
+                        <div class="combo-input-wrapper" id="bondCombo">
                             <input type="text" id="bondOffset" value="0" inputmode="decimal">
                             <button class="combo-dropdown-button" data-dropdown="bond">▼</button>
                             <div class="combo-dropdown-menu" id="bondDropdownMenu">
@@ -4271,12 +4272,16 @@
             return this.groutWidthInches;
         }
 
-        // The offset box is Running Bond for a grid, Step for a stepped pattern, and not used by herringbone or basketweave.
-        // A basketweave also asks for the tiles per block and sets the grout itself.
+        // The offset box is Running Bond for a grid, Step for a stepped pattern, and not used by herringbone. A basketweave
+        // shows its tiles per block there (worked out, not typed) and sets the grout itself.
         updatePatternControls() {
             const weaving = this.pattern === 'basketweave';
-            document.getElementById('labelBond').textContent = this.pattern === 'stepped' ? 'Step:' : 'Running Bond:';
-            document.getElementById('bondGroup').style.visibility = (this.pattern === 'herringbone' || weaving) ? 'hidden' : 'visible';
+            document.getElementById('labelBond').textContent = weaving ? 'Tiles per block:' : this.pattern === 'stepped' ? 'Step:' : 'Running Bond:';
+            document.getElementById('bondGroup').style.visibility = this.pattern === 'herringbone' ? 'hidden' : 'visible';
+            document.getElementById('bondCombo').style.display = weaving ? 'none' : '';
+            const readout = document.getElementById('weaveReadout');
+            readout.style.display = weaving ? '' : 'none';
+            readout.value = weaving && this.weaveCount() >= 2 ? String(this.weaveCount()) : '\u2014';
             const groutInput = document.getElementById('groutWidth'), groutButton = document.querySelector('[data-dropdown="grout"]');
             const hint = document.getElementById('weaveHint');
             const isMetric = this.unitMode === 'metric';
@@ -4291,11 +4296,10 @@
             hint.style.display = '';
             if (!fit.ok) {
                 hint.style.color = '#BF616A';
-                hint.textContent = 'A basketweave needs a tile at least twice as long as it is wide. Laid as a plain grid until then.';
+                hint.textContent = 'A basketweave needs a tile at least twice as long as it is wide.';
             } else {
                 hint.style.color = '';
-                const wide = fit.grout > 0.5 ? ' That is wider than usual; try another tile size or number per block.' : '';
-                hint.textContent = fit.n + ' tiles per block. The blocks only meet when the tile length is the width \u00D7 ' + fit.n + ' plus the grout \u00D7 ' + (fit.n - 1) + ', so the grout is set to ' + formatMeasurement(fit.grout, this.unitMode) + ' for this tile.' + wide;
+                hint.textContent = 'Grout is set by the tile size.';
             }
         }
 

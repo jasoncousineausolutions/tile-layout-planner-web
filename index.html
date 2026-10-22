@@ -1222,7 +1222,7 @@
             background: var(--steel-blue);
         }
         .submenu-tree > :first-child::after { top: -4px; }
-        .submenu-tree > :last-child::after { bottom: 50%; }
+        .submenu-tree > :last-child::after, .submenu-tree > .tree-last::after { bottom: 50%; }
         
         /* A row of the tree holding a control: the name on the left, the control on the right */
         .submenu-tree > .tree-row {
@@ -1235,7 +1235,18 @@
         }
         .submenu-tree > .tree-row label { margin: 0; font-size: 13px; font-weight: 500; color: var(--slate-gray); }
         .submenu-tree > .tree-row select { flex: none; width: 56%; margin: 0; }
-        .submenu-tree > .tree-row input[type="color"] { flex: none; width: 44px; height: 26px; padding: 0; border: 1px solid var(--light-gray); border-radius: 3px; background: none; cursor: pointer; }
+        /* Items hanging under a row of the tree (the colours): indented, with no line to them */
+        .submenu-tree > .tree-sub {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: var(--space-sm);
+            padding: 4px 4px 4px 44px;
+        }
+        .submenu-tree > .tree-sub label { margin: 0; font-size: 13px; color: var(--slate-gray); }
+        .submenu-tree > button.reset-colors { padding-left: 44px; }
+        .submenu-tree > button.reset-colors::before, .submenu-tree > button.reset-colors::after { display: none; }
+        .submenu-tree > .tree-row input[type="color"], .submenu-tree > .tree-sub input[type="color"] { flex: none; width: 44px; height: 26px; padding: 0; border: 1px solid var(--light-gray); border-radius: 3px; background: none; cursor: pointer; }
         
         /* Mobile links footer (hidden on desktop) */
         .mobile-links-footer {
@@ -3032,8 +3043,11 @@
             });
             const colorBoxes = [];
             document.querySelectorAll('.display-colors').forEach(placeholder => {
+                const heading = document.createElement('div'); heading.className = 'tree-row tree-last';   // the tree ends here; the colours hang under it
+                const headingLabel = document.createElement('label'); headingLabel.textContent = 'Colours';
+                heading.appendChild(headingLabel);
                 const rows = DISPLAY_COLOR_NAMES.map(([key, name]) => {
-                    const row = document.createElement('div'); row.className = 'tree-row';
+                    const row = document.createElement('div'); row.className = 'tree-sub';
                     const label = document.createElement('label'); label.textContent = name;
                     const input = document.createElement('input'); input.type = 'color'; input.dataset.key = key; input.setAttribute('aria-label', name);
                     row.append(label, input); colorBoxes.push(input);
@@ -3041,7 +3055,7 @@
                 });
                 const reset = document.createElement('button'); reset.type = 'button'; reset.className = 'reset-colors'; reset.textContent = 'Reset colours';
                 reset.addEventListener('click', () => { this.displayColors = { ...DISPLAY_COLOR_DEFAULTS }; showColors(); saveColors(); this.redraw(); });
-                placeholder.replaceWith(...rows, reset);   // the rows join the menu's tree
+                placeholder.replaceWith(heading, ...rows, reset);
             });
             const showColors = () => colorBoxes.forEach(input => { input.value = this.displayColors[input.dataset.key]; });
             const saveColors = () => { try { localStorage.setItem('tilePlanner_colors', JSON.stringify(this.displayColors)); } catch (err) { /* ignore */ } };

@@ -213,6 +213,34 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['ph
     expect((await page.evaluate(() => app.pattern)) === 'grid', 'a design with no pattern should load as a grid');
     expect(page.errors.length === 0, page.errors.join(' | '));
   });
+  await step('basketweave: grout is worked out from the tile, the box locks, a short tile is explained, and it saves and loads', async () => {
+    await page.evaluate(() => { const k = 10.8, p = (x, y) => ({ x: x * k, y: y * k }); app.importDesign(JSON.stringify({ format: 'tile-planner-design', version: '1.1', appState: { unitMode: 'decimal2', currentTab: 'tileLayout', zoom: 1, panX: 0, panY: 0 }, tileLayout: { tileWidthInches: 4, tileHeightInches: 8, groutWidthInches: 0.125, tileDepthInches: 0.5, groutType: 'unknown', bondOffset: 0, rotationDegrees: 0, offsetXInches: 0, offsetYInches: 0 }, surface: { vertices: [p(0, 0), p(64, 0), p(64, 48), p(0, 48)], lines: [[0, 1], [1, 2], [2, 3], [3, 0]] } })); });
+    await page.click('.tab[data-tab="tileLayout"]'); await page.waitForTimeout(200);
+    const set = (id, v) => page.evaluate(([i, val]) => { const el = document.getElementById(i); el.value = val; el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true })); }, [id, v]);
+    const read = () => page.evaluate(() => ({ grout: document.getElementById('groutWidth').value, locked: document.getElementById('groutWidth').disabled, group: getComputedStyle(document.getElementById('weaveGroup')).display, hint: document.getElementById('weaveHint').textContent, stored: app.groutWidthInches, used: app.effectiveGrout() }));
+    await set('tilePattern', 'basketweave');
+    let r = await read();
+    expect(r.group !== 'none' && r.locked && Math.abs(r.used) < 1e-9 && /^0\.0+$/.test(r.grout), '4 x 8 tiles, 2 per block should set the grout to 0: ' + JSON.stringify(r));
+    expect(Math.abs(r.stored - 0.125) < 1e-9, 'the grout you typed should be kept for when you leave basketweave: ' + r.stored);
+    await set('tileHeight', '9');
+    r = await read();
+    expect(Math.abs(r.used - 1) < 1e-9 && /^1\.0+$/.test(r.grout) && /wider than usual/.test(r.hint), '4 x 9 tiles should need 1 in of grout, and say it is wide: ' + JSON.stringify(r));
+    await set('weaveCount', '3');
+    r = await read();
+    expect(!r.locked && /too short/.test(r.hint), '4 x 9 tiles cannot make blocks of 3: ' + JSON.stringify(r));
+    await set('tileWidth', '3'); await set('tileHeight', '9');
+    r = await read();
+    expect(r.locked && Math.abs(r.used) < 1e-9, '3 x 9 tiles, 3 per block should need no grout: ' + JSON.stringify(r));
+    const saved = await page.evaluate(() => app.exportDesign());
+    expect(JSON.parse(saved).tileLayout.weave === 3 && JSON.parse(saved).tileLayout.pattern === 'basketweave', 'basketweave settings were not saved');
+    await set('tilePattern', 'grid');
+    r = await read();
+    expect(!r.locked && r.group === 'none' && Math.abs(parseFloat(r.grout) - 0.125) < 1e-6, 'leaving basketweave should bring back the typed grout: ' + JSON.stringify(r));
+    await page.evaluate((j) => app.importDesign(j), saved);
+    r = await read();
+    expect(r.locked && (await page.evaluate(() => app.weave)) === 3, 'loading did not restore the basketweave');
+    expect(page.errors.length === 0, page.errors.join(' | '));
+  });
   await step('finalize: dragging the canvas pans it, a plain click still selects, the middle button pans anywhere', async () => {
     const phone = await page.evaluate(() => innerWidth <= 800);
     if (phone) return;   // touch has its own pan and pinch

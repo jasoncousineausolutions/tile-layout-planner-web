@@ -35,6 +35,12 @@ const layouts = {
   herringbone: { tile: { pattern: 'herringbone', tileWidthInches: 12, tileHeightInches: 3, groutWidthInches: 0.125 }, surface: room([[0, 0], [90, 0], [90, 40], [50, 40], [50, 70], [0, 70]]) },
   herringbone45: { tile: { pattern: 'herringbone', tileWidthInches: 9, tileHeightInches: 3, groutWidthInches: 0.125, rotationDegrees: 45, offsetXInches: 2 }, surface: room(rect(0, 0, 100, 70), [rect(30, 20, 20, 20)]) },
   herringboneTall: { tile: { pattern: 'herringbone', tileWidthInches: 4, tileHeightInches: 16, groutWidthInches: 0.25 }, surface: room(rect(0, 0, 80, 60)) },
+  basketweave: { tile: { pattern: 'basketweave', tileWidthInches: 4, tileHeightInches: 8, groutWidthInches: 0.5 }, surface: room(rect(0, 0, 64, 48)) },
+  basketweaveThree: { tile: { pattern: 'basketweave', weave: 3, tileWidthInches: 2, tileHeightInches: 7, groutWidthInches: 0 }, surface: room(rect(0, 0, 70, 50), [rect(20, 10, 14, 14)]) },
+  basketweaveWide: { tile: { pattern: 'basketweave', tileWidthInches: 3, tileHeightInches: 7 }, surface: room([[0, 0], [60, 0], [60, 30], [24, 30], [24, 48], [0, 48]]) },
+  basketweaveShort: { tile: { pattern: 'basketweave', tileWidthInches: 3, tileHeightInches: 5 }, surface: room(rect(0, 0, 60, 40)) },
+  exactFit: { tile: { tileWidthInches: 12, tileHeightInches: 12, groutWidthInches: 0 }, surface: room(rect(0, 0, 48, 48)) },
+  flushToWall: { tile: { tileWidthInches: 24, tileHeightInches: 12, groutWidthInches: 0.125 }, surface: room(rect(0, 0, 96, 60)) },
   offsets45: { tile: { rotationDegrees: 45, offsetXInches: 3.3, offsetYInches: 7.1, groutWidthInches: 0.25 }, surface: room([[0, 0], [96, 0], [96, 24], [72, 24], [72, 8], [60, 8], [60, 24], [0, 24]]) },
   everything: { tile: { tileWidthInches: 18, tileHeightInches: 18, offsetXInches: 5, rotationDegrees: 15 }, surface: room([[28, 0], [90, 0], [90, 80], [16, 80], [16, 46], [0, 46], [0, 18]], [rect(30, 30, 24, 12)]) },
 };

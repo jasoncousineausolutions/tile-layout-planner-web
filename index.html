@@ -1720,6 +1720,16 @@
                         <option value="grid" selected>Grid (stacked or running bond)</option>
                         <option value="stepped">Stepped offset</option>
                         <option value="herringbone">Herringbone</option>
+                        <option value="basketweave">Basketweave</option>
+                    </select>
+                </div>
+                
+                <div class="input-group" id="weaveGroup" style="display: none;">
+                    <label for="weaveCount">Tiles per block:</label>
+                    <select id="weaveCount">
+                        <option value="2" selected>2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
                     </select>
                 </div>
                 
@@ -1766,6 +1776,8 @@
                         </div>
                     </div>
                 </div>
+                
+                <p class="hint-text" id="weaveHint" style="display: none;"></p>
                 
                 <button id="btnToggleGrout" class="toggle-section-btn" aria-expanded="false" style="margin-top: var(--space-sm);">Grout Estimation</button>
                 <div id="groutCollapsible" class="collapsible-section" style="display: none;">
@@ -2320,11 +2332,38 @@
         }
     };
 
+    // Basketweave: square blocks in a checkerboard, each block `weave` tiles side by side, flat in one block and standing in the
+    // next. The blocks only meet if the tile's length is (width x weave) + (grout x (weave - 1)), so the grout is worked out from
+    // the tile (see TileApp.weaveGrout). A tile too short for the number per block is laid as a plain grid.
+    TILE_PATTERNS.basketweave = {
+        tilesIn(layout, minX, minY, maxX, maxY) {
+            const n = layout.weave;
+            const long = Math.max(layout.tileW, layout.tileH), short = Math.min(layout.tileW, layout.tileH);
+            if (n < 2 || long < n * short - 1e-6) return TILE_PATTERNS.grid.tilesIn(layout, minX, minY, maxX, maxY);
+            const flatIsWidth = layout.tileW >= layout.tileH;
+            const block = long + layout.groutW, pitch = short + layout.groutW;
+            const tiles = [];
+            const touches = (x, y, w, h) => x < maxX && x + w > minX && y < maxY && y + h > minY;
+            for (let i = Math.floor(minX / block) - 1; i <= Math.ceil(maxX / block) + 1; i++) {
+                for (let j = Math.floor(minY / block) - 1; j <= Math.ceil(maxY / block) + 1; j++) {
+                    const flat = (((i + j) % 2) + 2) % 2 === 0;
+                    for (let t = 0; t < n; t++) {
+                        const tile = flat
+                            ? { x: i * block, y: j * block + t * pitch, w: long, h: short, swap: !flatIsWidth }
+                            : { x: i * block + t * pitch, y: j * block, w: short, h: long, swap: flatIsWidth };
+                        if (touches(tile.x, tile.y, tile.w + layout.groutW, tile.h + layout.groutW)) tiles.push(tile);
+                    }
+                }
+            }
+            return tiles;
+        }
+    };
+
     // Everything that decides where tiles sit. Sizes are in world pixels. The tile count, the cut measurements and the
     // grid drawing all take their tiles from here.
     class TileLayout {
-        constructor({ pattern = 'grid', tileW, tileH, groutW, bond, rotationRad, offsetX, offsetY }) {
-            Object.assign(this, { pattern, tileW, tileH, groutW, bond, rotationRad, offsetX, offsetY });
+        constructor({ pattern = 'grid', tileW, tileH, groutW, bond, weave = 2, rotationRad, offsetX, offsetY }) {
+            Object.assign(this, { pattern, tileW, tileH, groutW, bond, weave, rotationRad, offsetX, offsetY });
             this.effW = tileW + groutW;
             this.effH = tileH + groutW;
         }
@@ -2740,6 +2779,7 @@
             this.groutType = 'unknown';
             this.bondOffset = 0.0;
             this.pattern = 'grid';
+            this.weave = 2;   // tiles per block in a basketweave
             this.rotationDegrees = 0;
             this.offsetXInches = 0.0;
             this.offsetYInches = 0.0;
@@ -3003,6 +3043,12 @@
                 document.getElementById(id).addEventListener('input', () => this.updateTileSettings(id));
             });
             document.getElementById('bondOffset').addEventListener('input', () => this.updateBondOffset());
+            document.getElementById('weaveCount').addEventListener('change', (e) => {
+                this.weave = parseInt(e.target.value, 10);
+                this.updatePatternControls();
+                if (this.currentTab === 'finalize') this.updateTileCount();
+                this.redraw();
+            });
             document.getElementById('tilePattern').addEventListener('change', (e) => {
                 this.pattern = e.target.value;
                 this.updatePatternControls();
@@ -3846,6 +3892,7 @@
                 let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
                 for (const pt of polygon) { minX = Math.min(minX, pt.x); minY = Math.min(minY, pt.y); maxX = Math.max(maxX, pt.x); maxY = Math.max(maxY, pt.y); }
                 
+                const rings = this.surfaceRings(layout, surface);
                 for (const tile of layout.tilesCovering(minX, minY, maxX, maxY, Math.max(layout.effW, layout.effH) * 2)) {
                     const tileCorners = tile.corners;
                     
@@ -3868,6 +3915,13 @@
                             }
                         }
                         if (!hasIntersection) continue;
+                    }
+                    
+                    // A tile that only touches the surface along a wall is not a cut, and one that fills it exactly is a full tile
+                    const clipped = this.clipTile(tile, rings);
+                    if (!clipped.failed) {
+                        if (clipped.area < CUT_MIN_AREA_SQIN) continue;
+                        if (clipped.full) { fullTiles++; continue; }
                     }
                     
                     // Partial tile — analyze the cut type
@@ -3963,11 +4017,12 @@
             
             // Grout estimation
             let groutHtml = '';
-            if (this.groutType !== 'unknown' && this.groutWidthInches > 0) {
+            const groutInches = this.effectiveGrout();
+            if (this.groutType !== 'unknown' && groutInches > 0) {
                 // TCNA formula: joint volume in cubic inches
                 const tileW = this.tileWidthInches;
                 const tileH = this.tileHeightInches;
-                const jointW = this.groutWidthInches;
+                const jointW = groutInches;
                 const tileDepth = this.tileDepthInches;
                 
                 // Volume of grout joints in cubic inches
@@ -4004,7 +4059,7 @@
                             '<div class="count-row" style="margin-top:4px;border-top:1px solid #D8DEE9;padding-top:4px;"><span class="count-label">Grout (' + typeLabel + '):</span><span class="count-value">' + groutWithWaste.toFixed(1) + ' lbs</span></div>';
                     }
                 }
-            } else if (this.groutType !== 'unknown' && this.groutWidthInches <= 0) {
+            } else if (this.groutType !== 'unknown' && groutInches <= 0) {
                 // Grout type selected but no width set
                 groutHtml = '<div class="count-row" style="margin-top:4px;border-top:1px solid #D8DEE9;padding-top:4px;"><span class="count-label" style="font-style:italic;">Set a Grout Width &gt; 0 for grout estimate</span></div>';
             }
@@ -4169,6 +4224,7 @@
             // Sync finalize offset fields
             document.getElementById('finalizeOffsetX').value = format(this.offsetXInches);
             document.getElementById('finalizeOffsetY').value = format(this.offsetYInches);
+            this.updatePatternControls();
         }
 
         updateTileSettings(sourceId) {
@@ -4186,7 +4242,7 @@
             }
             if (!isNaN(tileW) && tileW > 0) this.tileWidthInches = tileW;
             if (!isNaN(tileH) && tileH > 0) this.tileHeightInches = tileH;
-            if (!isNaN(groutW) && groutW >= 0) this.groutWidthInches = groutW;
+            if (!isNaN(groutW) && groutW >= 0 && !document.getElementById('groutWidth').disabled) this.groutWidthInches = groutW;
             if (!isNaN(offX)) this.offsetXInches = offX;
             if (!isNaN(offY)) this.offsetYInches = offY;
             // Sync finalize offset fields without overwriting the field being edited
@@ -4201,14 +4257,55 @@
                 document.getElementById('offsetX').value = format(this.offsetXInches);
                 document.getElementById('offsetY').value = format(this.offsetYInches);
             }
+            this.updatePatternControls();
             if (this.currentTab === 'finalize') this.updateTileCount();
             this.redraw();
         }
 
-        // The offset box is Running Bond for a grid, Step for a stepped pattern, and not used by herringbone.
+        // The grout a basketweave needs so its blocks meet: tile length = (width x n) + (grout x (n - 1)).
+        weaveGrout() {
+            const n = this.weave;
+            const long = Math.max(this.tileWidthInches, this.tileHeightInches), short = Math.min(this.tileWidthInches, this.tileHeightInches);
+            if (long < n * short - 1e-6) return { ok: false, needed: n * short };
+            return { ok: true, grout: (long - n * short) / (n - 1) };
+        }
+
+        // The grout width in use: the one typed in, except that a basketweave works it out from the tile.
+        effectiveGrout() {
+            if (this.pattern === 'basketweave') {
+                const w = this.weaveGrout();
+                if (w.ok) return w.grout;
+            }
+            return this.groutWidthInches;
+        }
+
+        // The offset box is Running Bond for a grid, Step for a stepped pattern, and not used by herringbone or basketweave.
+        // A basketweave also asks for the tiles per block and sets the grout itself.
         updatePatternControls() {
+            const weaving = this.pattern === 'basketweave';
             document.getElementById('labelBond').textContent = this.pattern === 'stepped' ? 'Step:' : 'Running Bond:';
-            document.getElementById('bondGroup').style.visibility = this.pattern === 'herringbone' ? 'hidden' : 'visible';
+            document.getElementById('bondGroup').style.visibility = (this.pattern === 'herringbone' || weaving) ? 'hidden' : 'visible';
+            document.getElementById('weaveGroup').style.display = weaving ? '' : 'none';
+            const groutInput = document.getElementById('groutWidth'), groutButton = document.querySelector('[data-dropdown="grout"]');
+            const hint = document.getElementById('weaveHint');
+            const isMetric = this.unitMode === 'metric';
+            const format = (inches) => isMetric ? (inches * CONFIG.MM_PER_INCH).toFixed(1) : inches.toFixed(3);
+            const fit = weaving ? this.weaveGrout() : null;
+            const locked = weaving && fit.ok;
+            groutInput.disabled = locked;
+            groutButton.disabled = locked;
+            groutInput.value = format(locked ? fit.grout : this.groutWidthInches);
+            hint.className = 'hint-text';
+            if (!weaving) { hint.style.display = 'none'; return; }
+            hint.style.display = '';
+            if (!fit.ok) {
+                hint.style.color = '#BF616A';
+                hint.textContent = 'These tiles are too short for ' + this.weave + ' per block: the length must be at least ' + this.weave + ' times the width. Laid as a plain grid until then.';
+            } else {
+                hint.style.color = '';
+                const wide = fit.grout > 0.5 ? ' That is wider than usual; try another tile size or number per block.' : '';
+                hint.textContent = 'Basketweave blocks only meet when the tile length is the width \u00D7 ' + this.weave + ' plus the grout \u00D7 ' + (this.weave - 1) + ', so the grout is set to ' + formatMeasurement(fit.grout, this.unitMode) + ' for this tile.' + wide;
+            }
         }
 
         updateBondOffset() {
@@ -4288,6 +4385,7 @@
                     groutType: this.groutType,
                     bondOffset: this.bondOffset,
                     pattern: this.pattern,
+                    weave: this.weave,
                     rotationDegrees: this.rotationDegrees,
                     offsetXInches: this.offsetXInches,
                     offsetYInches: this.offsetYInches
@@ -4358,6 +4456,7 @@
                     if (typeof tl.groutType === 'string') this.groutType = tl.groutType;
                     if (typeof tl.bondOffset === 'number') this.bondOffset = tl.bondOffset;
                     this.pattern = typeof tl.pattern === 'string' && TILE_PATTERNS[tl.pattern] ? tl.pattern : 'grid';
+                    if ([2, 3, 4].includes(tl.weave)) this.weave = tl.weave;
                     if (typeof tl.rotationDegrees === 'number') this.rotationDegrees = tl.rotationDegrees;
                     if (typeof tl.offsetXInches === 'number') this.offsetXInches = tl.offsetXInches;
                     if (typeof tl.offsetYInches === 'number') this.offsetYInches = tl.offsetYInches;
@@ -4376,6 +4475,7 @@
                 document.getElementById('distanceTool').checked = this.distanceToolEnabled;
                 document.getElementById('bondOffset').value = this.bondOffset;
                 document.getElementById('tilePattern').value = this.pattern;
+                document.getElementById('weaveCount').value = String(this.weave);
                 this.updatePatternControls();
                 document.getElementById('rotation').value = this.rotationDegrees;
                 document.getElementById('groutType').value = this.groutType;
@@ -4720,6 +4820,41 @@
         
         // ---- Tile List ----
 
+        // A surface as rings in layout space, in inches, for cutting tiles against it.
+        surfaceRings(layout, surface) {
+            const ppi = CONFIG.PIXELS_PER_INCH;
+            const toRing = (indices) => indices.map(i => { const p = layout.toLocal(this.vertices[i].x, this.vertices[i].y); return [p.x / ppi, p.y / ppi]; });
+            return { outer: toRing(this.getSurfaceOuterBoundary(surface)), holes: (surface.holes || []).map(toRing) };
+        }
+
+        // What is left of a tile once it is cut to the surface: { pieces: [{ ring, cutouts, area }], area, full }.
+        // Ring points say whether the edge to the next point is an uncut tile edge (`u`). `failed` if the clipper gave up.
+        clipTile(tile, rings) {
+            const ppi = CONFIG.PIXELS_PER_INCH;
+            const x0 = tile.x / ppi, y0 = tile.y / ppi, x1 = (tile.x + tile.w) / ppi, y1 = (tile.y + tile.h) / ppi;
+            let result;
+            try {
+                result = polygonClipping.intersection([[[x0, y0], [x1, y0], [x1, y1], [x0, y1]]], [rings.outer]);
+                for (const hole of rings.holes) { if (!result.length) break; result = polygonClipping.difference(result, [hole]); }
+            } catch (e) { return { pieces: [], area: 0, full: false, failed: true }; }
+            const onSide = (a, b) => [[a.x, b.x, x0], [a.x, b.x, x1], [a.y, b.y, y0], [a.y, b.y, y1]].some(([u, v, side]) => Math.abs(u - side) < 0.02 && Math.abs(v - side) < 0.02);
+            const pieces = [];
+            let total = 0;
+            for (const polygon of result) {
+                const rough = ringPoints(polygon[0]);
+                rough.forEach((pt, i) => { pt.u = onSide(pt, rough[(i + 1) % rough.length]); });   // an edge along a side of the tile is a factory edge; any other edge is a cut
+                const ring = simplifyRing(rough);
+                const cutouts = polygon.slice(1).map(r => simplifyRing(ringPoints(r)));
+                if (ring.length < 3) continue;
+                const area = Math.abs(ringArea(ring)) - cutouts.reduce((sum, r) => sum + Math.abs(ringArea(r)), 0);
+                if (area < CUT_MIN_AREA_SQIN) continue;   // a tile edge touching a wall, not a piece
+                pieces.push({ ring, cutouts, area });
+                total += area;
+            }
+            const full = pieces.length === 1 && !pieces[0].cutouts.length && total >= (tile.w / ppi) * (tile.h / ppi) - CUT_MIN_AREA_SQIN;
+            return { pieces, area: total, full, failed: false };
+        }
+
         // The distinct pieces left when the selected surfaces are tiled: { groups: [{ ring, holes, qty }], pieces }.
         // Tiles are cut against the surface in layout space, so every piece is in the tile's own axes, in inches.
         computeCutList() {
@@ -4727,39 +4862,22 @@
             const groups = [];
             let pieces = 0;
             if (!layout.isUsable()) return { groups, pieces };
-            const ppi = CONFIG.PIXELS_PER_INCH;
-            const toRing = (indices) => indices.map(i => { const p = layout.toLocal(this.vertices[i].x, this.vertices[i].y); return [p.x / ppi, p.y / ppi]; });
-            const tileArea = (layout.tileW / ppi) * (layout.tileH / ppi);
             
             for (const surfaceIdx of this.selectedSurfaces) {
                 const surface = this.detectedSurfaces[surfaceIdx];
                 if (!surface) continue;
                 const outerBoundary = this.getSurfaceOuterBoundary(surface);
-                const outer = toRing(outerBoundary);
-                const holes = (surface.holes || []).map(toRing);
+                const rings = this.surfaceRings(layout, surface);
                 let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
                 for (const i of outerBoundary) { const pt = this.vertices[i]; minX = Math.min(minX, pt.x); minY = Math.min(minY, pt.y); maxX = Math.max(maxX, pt.x); maxY = Math.max(maxY, pt.y); }
                 
                 for (const tile of layout.tilesCovering(minX, minY, maxX, maxY, Math.max(layout.effW, layout.effH) * 2)) {
                     if (!this.analyzeTileIntersectionWithSurface(tile.corners, surface, layout.tileW, layout.tileH)) continue;   // full tile, or nowhere near the surface
-                    const x0 = tile.x / ppi, y0 = tile.y / ppi, x1 = (tile.x + tile.w) / ppi, y1 = (tile.y + tile.h) / ppi;
-                    let result;
-                    try {
-                        result = polygonClipping.intersection([[[x0, y0], [x1, y0], [x1, y1], [x0, y1]]], [outer]);
-                        for (const hole of holes) { if (!result.length) break; result = polygonClipping.difference(result, [hole]); }
-                    } catch (e) { continue; }
-                    for (const polygon of result) {
-                        const onSide = (a, b) => [[a.x, b.x, x0], [a.x, b.x, x1], [a.y, b.y, y0], [a.y, b.y, y1]].some(([u, v, side]) => Math.abs(u - side) < 0.02 && Math.abs(v - side) < 0.02);
-                        const rough = ringPoints(polygon[0]);
-                        rough.forEach((pt, i) => { pt.u = onSide(pt, rough[(i + 1) % rough.length]); });   // an edge along a side of the tile is a factory edge; any other edge is a cut
-                        const ring = simplifyRing(rough);
-                        const cutouts = polygon.slice(1).map(r => simplifyRing(ringPoints(r)));
-                        if (ring.length < 3) continue;
-                        const area = Math.abs(ringArea(ring)) - cutouts.reduce((sum, r) => sum + Math.abs(ringArea(r)), 0);
-                        if (area < CUT_MIN_AREA_SQIN) continue;
-                        if (!cutouts.length && area >= tileArea - CUT_MIN_AREA_SQIN) continue;
+                    const clipped = this.clipTile(tile, rings);
+                    if (clipped.full) continue;
+                    for (const piece of clipped.pieces) {
                         pieces++;
-                        addCutPiece(groups, ring, cutouts);
+                        addCutPiece(groups, piece.ring, piece.cutouts);
                     }
                 }
             }
@@ -4808,7 +4926,7 @@
             const settings = [
                 `Tile ${fm(tileWIn)} × ${fm(tileHIn)}`,
                 `Grout ${fm(layout.groutW / ppi)}`,
-                this.pattern === 'herringbone' ? 'Herringbone' : this.pattern === 'stepped' ? `Stepped offset ${this.bondOffset}` : (this.bondOffset > 0 ? `Running bond offset ${this.bondOffset}` : 'Stacked rows'),
+                this.pattern === 'herringbone' ? 'Herringbone' : this.pattern === 'basketweave' ? `Basketweave, ${this.weave} per block` : this.pattern === 'stepped' ? `Stepped offset ${this.bondOffset}` : (this.bondOffset > 0 ? `Running bond offset ${this.bondOffset}` : 'Stacked rows'),
                 ...(this.rotationDegrees ? [`Rotated ${this.rotationDegrees}°`] : [])
             ].join('    ');
             c.fillStyle = MUTED; c.font = '30px sans-serif';
@@ -5849,9 +5967,14 @@
             for (const pt of polygon) { minX = Math.min(minX, pt.x); minY = Math.min(minY, pt.y); maxX = Math.max(maxX, pt.x); maxY = Math.max(maxY, pt.y); }
             
             const partialTiles = [];
+            const rings = this.surfaceRings(layout, surface);
             for (const tile of layout.tilesCovering(minX, minY, maxX, maxY, Math.max(effectiveTileW, effectiveTileH) * 2)) {
                 const tileInfo = this.analyzeTileIntersectionWithSurface(tile.corners, surface, tileW, tileH);
-                if (tileInfo && tileInfo.isPartial) { tileInfo.w = tile.w; tileInfo.h = tile.h; partialTiles.push(tileInfo); }
+                if (tileInfo && tileInfo.isPartial) {
+                    const clipped = this.clipTile(tile, rings);
+                    if (!clipped.failed && (clipped.area < CUT_MIN_AREA_SQIN || clipped.full)) continue;   // touching a wall, or filling the surface exactly
+                    tileInfo.w = tile.w; tileInfo.h = tile.h; partialTiles.push(tileInfo);
+                }
             }
             if (this.showCutMeasurements) {
                 this.drawPartialTileLabels(partialTiles, tileW, tileH);
@@ -5868,7 +5991,7 @@
         getLayout() {
             return new TileLayout({
                 tileW: this.tileWidthInches * CONFIG.PIXELS_PER_INCH, tileH: this.tileHeightInches * CONFIG.PIXELS_PER_INCH,
-                pattern: this.pattern, groutW: this.groutWidthInches * CONFIG.PIXELS_PER_INCH, bond: this.bondOffset,
+                pattern: this.pattern, groutW: this.effectiveGrout() * CONFIG.PIXELS_PER_INCH, bond: this.bondOffset, weave: this.weave,
                 rotationRad: (this.rotationDegrees * Math.PI) / 180,
                 offsetX: this.offsetXInches * CONFIG.PIXELS_PER_INCH, offsetY: this.offsetYInches * CONFIG.PIXELS_PER_INCH
             });

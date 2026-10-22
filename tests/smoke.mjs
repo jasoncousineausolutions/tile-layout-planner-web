@@ -206,7 +206,7 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['ph
     expect((await page.evaluate(() => app.displayColors.cutLabel)) === '#00aa00', 'colour not remembered after a reload');
     if (phone) { await page.click('.tab[data-tab="tileLayout"]'); await page.waitForTimeout(250); }
     await page.click(btn);
-    await page.click(sec + ' .display-colors button');
+    await page.click(sec + ' .reset-colors');
     expect((await page.evaluate(() => app.displayColors.cutLabel)) === '#cc0000', 'Reset colours did not restore the default');
     await page.evaluate(() => { const el = document.querySelector('.label-size-select'); el.value = '1'; el.dispatchEvent(new Event('change', { bubbles: true })); });
     expect(page.errors.length === 0, page.errors.join(' | '));

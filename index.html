@@ -1186,7 +1186,7 @@
             padding: 0;
             border-left: none;
         }
-        .submenu-tree button {
+        .submenu-tree > button {
             position: relative;
             display: block;
             width: 100%;
@@ -1200,9 +1200,9 @@
             font-weight: 500;
             color: var(--slate-gray);
         }
-        @media (hover: hover) { .submenu-tree button:hover { background: var(--light-gray); } }   /* on touch screens :hover would stay on the last item tapped */
-        .submenu-tree button:active { background: var(--light-gray); }
-        .submenu-tree button::before {   /* the branch */
+        @media (hover: hover) { .submenu-tree > button:hover { background: var(--light-gray); } }   /* on touch screens :hover would stay on the last item tapped */
+        .submenu-tree > button:active { background: var(--light-gray); }
+        .submenu-tree > button::before, .submenu-tree > .tree-row::before {   /* the branch */
             content: '';
             position: absolute;
             left: 0;
@@ -1212,7 +1212,7 @@
             margin-top: -1.5px;
             background: var(--steel-blue);
         }
-        .submenu-tree button::after {   /* the line, which stops at the last item */
+        .submenu-tree > button::after, .submenu-tree > .tree-row::after {   /* the line, which stops at the last item */
             content: '';
             position: absolute;
             left: 0;
@@ -1221,19 +1221,26 @@
             width: 3px;
             background: var(--steel-blue);
         }
-        .submenu-tree button:first-child::after { top: -4px; }
-        .submenu-tree button:last-child::after { bottom: 50%; }
+        .submenu-tree > :first-child::after { top: -4px; }
+        .submenu-tree > :last-child::after { bottom: 50%; }
+        
+        /* A row of the tree holding a control: the name on the left, the control on the right */
+        .submenu-tree > .tree-row {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: var(--space-sm);
+            padding: 6px 4px 6px 28px;
+        }
+        .submenu-tree > .tree-row label { margin: 0; font-size: 13px; font-weight: 500; color: var(--slate-gray); }
+        .submenu-tree > .tree-row select { flex: none; width: 56%; margin: 0; }
+        .submenu-tree > .tree-row input[type="color"] { flex: none; width: 44px; height: 26px; padding: 0; border: 1px solid var(--light-gray); border-radius: 3px; background: none; cursor: pointer; }
         
         /* Mobile links footer (hidden on desktop) */
         .mobile-links-footer {
             display: none;
         }
-        
-        /* Display Options: colour pickers */
-        .display-colors { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--space-xs) var(--space-sm); margin-bottom: var(--space-xs); }
-        .display-colors label { margin: 0; font-size: 12px; }
-        .display-colors input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid var(--light-gray); border-radius: 3px; background: none; cursor: pointer; }
-        .display-colors button { grid-column: 1 / -1; }
         
         /* Units section label variants */
         .units-label-compact {
@@ -1712,6 +1719,7 @@
                 <textarea id="saveLoadTextarea" spellcheck="false"></textarea>
                 <div id="saveLoadTextButtons">
                     <button id="saveLoadCopy">Copy to Clipboard</button>
+                    <button id="saveLoadPaste">Paste from Clipboard</button>
                     <button id="saveLoadLoad">Load from text</button>
                 </div>
             </details>
@@ -1851,10 +1859,10 @@
                 
                 <div class="mobile-units-section">
                     <button id="btnToggleDisplayMobile" class="toggle-section-btn" aria-expanded="false">Display Options</button>
-                    <div id="displayCollapsibleMobile" class="collapsible-section submenu" style="display: none;">
-                        <div class="input-group">
-                            <label for="unitModeMobile">Units:</label>
-                            <select id="unitModeMobile">
+                    <div id="displayCollapsibleMobile" class="collapsible-section submenu submenu-tree" style="display: none;">
+                    <div class="tree-row">
+                        <label for="unitModeMobile">Units</label>
+                        <select id="unitModeMobile">
                             <option value="metric">Metric (mm)</option>
                             <option value="decimal2" selected>Inches (0.00")</option>
                             <option value="decimal3">Inches (0.000")</option>
@@ -1863,18 +1871,18 @@
                             <option value="thirtysecond">Inches (1/32")</option>
                             <option value="sixtyfourth">Inches (1/64")</option>
                         </select>
-                        </div>
-                        <div class="input-group">
-                            <label>Label size:</label>
-                            <select class="label-size-select">
-                                <option value="0.85">Small</option>
-                                <option value="1" selected>Normal</option>
-                                <option value="1.4">Large</option>
-                                <option value="1.8">Extra large</option>
-                                <option value="2.4">Huge</option>
-                            </select>
-                        </div>
-                        <div class="display-colors"></div>
+                    </div>
+                    <div class="tree-row">
+                        <label>Label size</label>
+                        <select class="label-size-select">
+                            <option value="0.85">Small</option>
+                            <option value="1" selected>Normal</option>
+                            <option value="1.4">Large</option>
+                            <option value="1.8">Extra large</option>
+                            <option value="2.4">Huge</option>
+                        </select>
+                    </div>
+                    <div class="display-colors"></div>
                     </div>
                 </div>
             </div>
@@ -2040,9 +2048,9 @@
             </div>
             <div id="unitsRow">
                 <button id="btnToggleDisplay" class="toggle-section-btn" aria-expanded="false" style="margin-top: 0;">Display Options</button>
-                <div id="displayCollapsible" class="collapsible-section submenu" style="display: none;">
-                    <div class="input-group">
-                        <label for="unitMode">Units:</label>
+                <div id="displayCollapsible" class="collapsible-section submenu submenu-tree" style="display: none;">
+                    <div class="tree-row">
+                        <label for="unitMode">Units</label>
                         <select id="unitMode">
                         <option value="metric">Metric (mm)</option>
                         <option value="decimal2" selected>Inches (0.00")</option>
@@ -2053,16 +2061,16 @@
                         <option value="sixtyfourth">Inches (1/64")</option>
                     </select>
                     </div>
-                    <div class="input-group">
-                            <label>Label size:</label>
-                            <select class="label-size-select">
-                                <option value="0.85">Small</option>
-                                <option value="1" selected>Normal</option>
-                                <option value="1.4">Large</option>
-                                <option value="1.8">Extra large</option>
-                                <option value="2.4">Huge</option>
-                            </select>
-                        </div>
+                    <div class="tree-row">
+                        <label>Label size</label>
+                        <select class="label-size-select">
+                            <option value="0.85">Small</option>
+                            <option value="1" selected>Normal</option>
+                            <option value="1.4">Large</option>
+                            <option value="1.8">Extra large</option>
+                            <option value="2.4">Huge</option>
+                        </select>
+                    </div>
                     <div class="display-colors"></div>
                 </div>
             </div>
@@ -3023,15 +3031,17 @@
                 });
             });
             const colorBoxes = [];
-            document.querySelectorAll('.display-colors').forEach(box => {
-                DISPLAY_COLOR_NAMES.forEach(([key, name]) => {
+            document.querySelectorAll('.display-colors').forEach(placeholder => {
+                const rows = DISPLAY_COLOR_NAMES.map(([key, name]) => {
+                    const row = document.createElement('div'); row.className = 'tree-row';
                     const label = document.createElement('label'); label.textContent = name;
                     const input = document.createElement('input'); input.type = 'color'; input.dataset.key = key; input.setAttribute('aria-label', name);
-                    box.append(label, input); colorBoxes.push(input);
+                    row.append(label, input); colorBoxes.push(input);
+                    return row;
                 });
-                const reset = document.createElement('button'); reset.type = 'button'; reset.textContent = 'Reset colours';
+                const reset = document.createElement('button'); reset.type = 'button'; reset.className = 'reset-colors'; reset.textContent = 'Reset colours';
                 reset.addEventListener('click', () => { this.displayColors = { ...DISPLAY_COLOR_DEFAULTS }; showColors(); saveColors(); this.redraw(); });
-                box.appendChild(reset);
+                placeholder.replaceWith(...rows, reset);   // the rows join the menu's tree
             });
             const showColors = () => colorBoxes.forEach(input => { input.value = this.displayColors[input.dataset.key]; });
             const saveColors = () => { try { localStorage.setItem('tilePlanner_colors', JSON.stringify(this.displayColors)); } catch (err) { /* ignore */ } };
@@ -3204,6 +3214,18 @@
                 const file = e.target.files && e.target.files[0];
                 e.target.value = '';   // so the same file can be opened again
                 if (file) this.openDesignFile(file);
+            });
+            document.getElementById('saveLoadPaste').addEventListener('click', async () => {
+                const textarea = document.getElementById('saveLoadTextarea');
+                try {
+                    const text = await navigator.clipboard.readText();
+                    if (!text) { this.saveLoadStatus('The clipboard is empty.', 'error'); return; }
+                    textarea.value = text;
+                    this.saveLoadStatus('Pasted. Press Load from text to open it.', 'success');
+                } catch (e) {
+                    this.saveLoadStatus('The clipboard could not be read here. Paste into the box instead (long-press, or Ctrl+V).', 'error');
+                    textarea.focus();
+                }
             });
             document.getElementById('saveLoadLoad').addEventListener('click', () => {
                 const textarea = document.getElementById('saveLoadTextarea');

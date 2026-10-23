@@ -717,6 +717,8 @@
         }
         
         .file-action { margin-bottom: var(--space-md); }
+        .file-action label { display: block; font-size: 13px; margin-bottom: var(--space-xs); }
+        .file-action input[type="text"] { width: 100%; margin-bottom: var(--space-sm); }
         .file-action button { margin-bottom: var(--space-xs); }
         .file-action .hint-text { margin: 0; }
         
@@ -1722,8 +1724,10 @@
         <div id="saveLoadDialog">
             <div id="saveLoadTitle">Save / Load Design</div>
             <div class="file-action">
+                <label for="saveFileName">File name</label>
+                <input type="text" id="saveFileName" spellcheck="false" autocomplete="off">
                 <button id="saveToFile" class="primary">Save to file</button>
-                <p class="hint-text">Saves the design as a file you can open here later, or on another device.</p>
+                <p class="hint-text">Saves the design as a file you can open here later, or on another device. Where the browser allows it, you choose the folder and can replace an existing file.</p>
             </div>
             <div class="file-action">
                 <button id="openFile">Open file</button>
@@ -4885,24 +4889,53 @@
             status.className = kind || '';
         }
 
-        // Saves the design as a .json file: the app shares it (save to Files, Drive, email); a browser downloads it.
+        // The file name typed in the box, made safe, with .json on the end.
+        designFileName() {
+            let name = document.getElementById('saveFileName').value.trim().replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-').replace(/\.json$/i, '').trim();
+            if (!name) name = 'tile-design-' + new Date().toISOString().slice(0, 10);
+            return name + '.json';
+        }
+
+        // Saves the design as a .json file. A browser that can ask where to put it does (choose the folder, replace a file);
+        // other browsers download it under the name in the box; the app shares it (save to Files, Drive, email).
         async saveDesignFile() {
             const json = this.exportDesign();
-            const name = 'tile-design-' + new Date().toISOString().slice(0, 10) + '.json';
+            const name = this.designFileName();
+            const remember = (savedName) => {
+                const base = savedName.replace(/\.json$/i, '');
+                document.getElementById('saveFileName').value = base;
+                try { localStorage.setItem('tilePlanner_fileName', base); } catch (err) { /* ignore */ }
+            };
             try {
                 const cap = window.Capacitor;
                 const { Filesystem, Share } = (cap && cap.Plugins) || {};
                 if (Filesystem && Share) {
                     const result = await Filesystem.writeFile({ path: name, data: json, directory: 'CACHE', encoding: 'utf8' });
                     await Share.share({ title: 'Tile design', text: 'Tile design from JCS Tile Planner', url: result.uri, dialogTitle: 'Save or send the design' });
+                    remember(name);
                     this.saveLoadStatus('', '');
                     return;
+                }
+                if (window.showSaveFilePicker) {
+                    try {
+                        const handle = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: 'Tile planner design', accept: { 'application/json': ['.json'] } }] });
+                        const writable = await handle.createWritable();
+                        await writable.write(json);
+                        await writable.close();
+                        remember(handle.name);
+                        this.saveLoadStatus('Saved ' + handle.name + '.', 'success');
+                        return;
+                    } catch (err) {
+                        if (err && err.name === 'AbortError') return;   // the dialog was cancelled
+                        // anything else (blocked in a frame, no permission): fall back to a download
+                    }
                 }
                 const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
                 const a = document.createElement('a');
                 a.href = url; a.download = name;
                 document.body.appendChild(a); a.click(); a.remove();
                 setTimeout(() => URL.revokeObjectURL(url), 1000);
+                remember(name);
                 this.saveLoadStatus('Saved ' + name + '.', 'success');
             } catch (e) {
                 this.saveLoadStatus('Could not save the file: ' + e.message + '. The design text below can still be copied.', 'error');
@@ -4932,6 +4965,9 @@
             const textarea = document.getElementById('saveLoadTextarea');
             const status = document.getElementById('saveLoadStatus');
             textarea.value = this.exportDesign();
+            let lastName = '';
+            try { lastName = localStorage.getItem('tilePlanner_fileName') || ''; } catch (err) { /* ignore */ }
+            document.getElementById('saveFileName').value = lastName || 'tile-design-' + new Date().toISOString().slice(0, 10);
             document.getElementById('saveLoadText').open = false;
             status.textContent = '';
             status.className = '';

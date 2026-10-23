@@ -123,11 +123,32 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['ph
     await page.evaluate(() => document.getElementById('btnSaveLoad').click());
     await page.waitForSelector('#saveLoadDialog', { state: 'visible' });
     expect(!(await page.isVisible('#saveLoadTextarea')), 'the design text should start collapsed');
-    // save to a file
+    // a browser without a save dialog downloads under the name in the box
+    await page.evaluate(() => { window.showSaveFilePicker = undefined; });
+    expect(/^tile-design-\d{4}-\d{2}-\d{2}$/.test(await page.inputValue('#saveFileName')), 'the file name box should start with a dated name');
+    await page.fill('#saveFileName', 'Kitchen floor v2');
     const [download] = await Promise.all([page.waitForEvent('download'), page.click('#saveToFile')]);
-    expect(/^tile-design-\d{4}-\d{2}-\d{2}\.json$/.test(download.suggestedFilename()), 'unexpected file name ' + download.suggestedFilename());
+    expect(download.suggestedFilename() === 'Kitchen floor v2.json', 'the file should use the name typed in the box: ' + download.suggestedFilename());
+    expect((await page.inputValue('#saveFileName')) === 'Kitchen floor v2', 'the name should be kept after saving');
+    // a browser with a save dialog: the name is suggested, the file is written where chosen, and cancelling saves nothing
+    const picked = await page.evaluate(async () => {
+      const calls = { suggested: null, written: '', closed: false };
+      window.showSaveFilePicker = async (o) => { calls.suggested = o.suggestedName; return { name: 'chosen.json', createWritable: async () => ({ write: async (t) => { calls.written = t; }, close: async () => { calls.closed = true; } }) }; };
+      document.getElementById('saveFileName').value = 'Bathroom';
+      await app.saveDesignFile();
+      const first = { ...calls, status: document.getElementById('saveLoadStatus').textContent, box: document.getElementById('saveFileName').value };
+      window.showSaveFilePicker = async () => { const e = new Error('cancelled'); e.name = 'AbortError'; throw e; };
+      document.getElementById('saveLoadStatus').textContent = '';
+      await app.saveDesignFile();
+      return { first, afterCancel: document.getElementById('saveLoadStatus').textContent };
+    });
+    expect(picked.first.suggested === 'Bathroom.json' && picked.first.closed && JSON.parse(picked.first.written).format === 'tile-planner-design' && /chosen\.json/.test(picked.first.status) && picked.first.box === 'chosen', 'the save dialog route is wrong: ' + JSON.stringify(picked.first));
+    expect(picked.afterCancel === '', 'cancelling the save dialog should say nothing: ' + picked.afterCancel);
+    await page.evaluate(() => { window.showSaveFilePicker = undefined; });
+    await page.fill('#saveFileName', 'plain');
+    const [download2] = await Promise.all([page.waitForEvent('download'), page.click('#saveToFile')]);
     const savedPath = path.join(path.dirname(new URL(import.meta.url).pathname), '.saved-design.json');
-    await download.saveAs(savedPath);
+    await download2.saveAs(savedPath);
     const fileText = fs.readFileSync(savedPath, 'utf8');
     expect(JSON.parse(fileText).format === 'tile-planner-design', 'the saved file is not a design');
     // the text is there when asked for

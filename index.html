@@ -1132,10 +1132,6 @@
         .label-short { display: none; }
         .label-full { display: inline; }
         
-        /* Mobile-only units section (hidden on desktop) */
-        .mobile-units-section {
-            display: none;
-        }
         
         /* Mobile-only sections (hidden on desktop) */
         .mobile-only-section {
@@ -1473,30 +1469,9 @@
                 display: block;
             }
             
-            /* Show mobile units section inside Tile Layout tab */
-            .mobile-units-section {
-                display: block;
-                margin-top: var(--space-sm);
-                padding-top: var(--space-xs);
-                border-top: 1px solid var(--light-gray);
-            }
             
-            .mobile-units-row {
-                display: flex;
-                align-items: center;
-                gap: var(--space-xs);
-                margin-bottom: var(--space-xs);
-            }
             
-            .mobile-units-row label {
-                margin-bottom: 0;
-                white-space: nowrap;
-                font-size: 11px;
-            }
             
-            .mobile-units-row select {
-                flex: 1;
-            }
             
             /* Switch offset labels to compact */
             .label-full { display: none !important; }
@@ -1880,35 +1855,6 @@
                     <strong>Tip:</strong> Enter measurements with units (e.g., "12mm", "5cm", "3.5"") or use the Display Options setting.
                 </div>
                 
-                <div class="mobile-units-section">
-                    <button id="btnToggleDisplayMobile" class="toggle-section-btn" aria-expanded="false">Display Options</button>
-                    <div id="displayCollapsibleMobile" class="collapsible-section submenu submenu-tree" style="display: none;">
-                    <div class="tree-row">
-                        <label for="unitModeMobile">Units</label>
-                        <select id="unitModeMobile">
-                            <option value="metric">Metric (mm)</option>
-                            <option value="metricCm">Metric (cm)</option>
-                            <option value="decimal2" selected>Inches (0.00")</option>
-                            <option value="decimal3">Inches (0.000")</option>
-                            <option value="eighth">Inches (1/8")</option>
-                            <option value="sixteenth">Inches (1/16")</option>
-                            <option value="thirtysecond">Inches (1/32")</option>
-                            <option value="sixtyfourth">Inches (1/64")</option>
-                        </select>
-                    </div>
-                    <div class="tree-row">
-                        <label>Label size</label>
-                        <select class="label-size-select">
-                            <option value="0.85">Small</option>
-                            <option value="1" selected>Normal</option>
-                            <option value="1.4">Large</option>
-                            <option value="1.8">Extra large</option>
-                            <option value="2.4">Huge</option>
-                        </select>
-                    </div>
-                    <div class="display-colors"></div>
-                    </div>
-                </div>
             </div>
             
             <div id="surfaceDesignTab" class="tab-pane">
@@ -2055,6 +2001,35 @@
                     <button id="btnTileListMobile">Tile and Cut List</button>
                     <button id="btnPrintMobile">Save Layout as Image</button>
                 </div>
+                </div>
+                <div class="menu-group">
+                    <button id="btnToggleDisplayMobile" class="toggle-section-btn" aria-expanded="false">Display Options</button>
+                    <div id="displayCollapsibleMobile" class="collapsible-section submenu submenu-tree" style="display: none;">
+                    <div class="tree-row">
+                        <label for="unitModeMobile">Units</label>
+                        <select id="unitModeMobile">
+                            <option value="metric">Metric (mm)</option>
+                            <option value="metricCm">Metric (cm)</option>
+                            <option value="decimal2" selected>Inches (0.00")</option>
+                            <option value="decimal3">Inches (0.000")</option>
+                            <option value="eighth">Inches (1/8")</option>
+                            <option value="sixteenth">Inches (1/16")</option>
+                            <option value="thirtysecond">Inches (1/32")</option>
+                            <option value="sixtyfourth">Inches (1/64")</option>
+                        </select>
+                    </div>
+                    <div class="tree-row">
+                        <label>Label size</label>
+                        <select class="label-size-select">
+                            <option value="0.85">Small</option>
+                            <option value="1" selected>Normal</option>
+                            <option value="1.4">Large</option>
+                            <option value="1.8">Extra large</option>
+                            <option value="2.4">Huge</option>
+                        </select>
+                    </div>
+                    <div class="display-colors"></div>
+                    </div>
                 </div>
                 <div class="link-buttons">
                     <a href="https://www.jasoncousineau.com/free-tools/tile-planner#instructions" target="_blank" class="link-btn">Help</a>
@@ -3271,8 +3246,10 @@
                     textarea.value = text;
                     this.saveLoadStatus('Pasted. Press Load from text to open it.', 'success');
                 } catch (e) {
-                    this.saveLoadStatus('The clipboard could not be read here. Paste into the box instead (long-press, or Ctrl+V).', 'error');
+                    document.getElementById('saveLoadText').open = true;
+                    this.saveLoadStatus('This browser would not let the page read the clipboard. Tap or click in the box and paste there, then press Load from text.', 'error');
                     textarea.focus();
+                    textarea.select();
                 }
             });
             document.getElementById('saveLoadLoad').addEventListener('click', () => {
@@ -4453,8 +4430,21 @@
             this.redraw();
         }
 
+        // Fits the whole drawing in the view, centred, with a margin (zoomed in up to 3x for a small one).
+        fitView() {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const v of this.vertices) { minX = Math.min(minX, v.x); minY = Math.min(minY, v.y); maxX = Math.max(maxX, v.x); maxY = Math.max(maxY, v.y); }
+            const margin = 40, w = Math.max(maxX - minX, 1), h = Math.max(maxY - minY, 1);
+            const cw = this.canvas.width, ch = this.canvas.height;
+            this.zoom = Math.max(0.01, Math.min(3, (cw - 2 * margin) / w, (ch - 2 * margin) / h));   // a huge drawing may need less than the wheel's minimum zoom
+            this.panX = (cw - w * this.zoom) / 2 - minX * this.zoom;
+            this.panY = (ch - h * this.zoom) / 2 - minY * this.zoom;
+            this.redraw();
+        }
+
         recenterView() {
-            // Ensure at least 60" of width is visible
+            if (this.vertices.length > 0) { this.fitView(); return; }
+            // Nothing drawn yet: ensure at least 60" of width is visible
             const minWorldWidth = 60 * CONFIG.PIXELS_PER_INCH; // 60 inches in world pixels
             const canvasWidth = this.canvas.width;
             const idealZoom = canvasWidth / minWorldWidth;
@@ -4957,9 +4947,11 @@
             }
         }
 
-        // After a design is loaded from a file or text: the Tile Layout tab shows only a grid, so move to Surface Design to see it.
+        // After a design is loaded from a file or text: the Tile Layout tab shows only a grid, so move to Surface Design to see it,
+        // and fit the drawing to this screen.
         showLoadedDesign() {
             if (this.currentTab === 'tileLayout') document.querySelector('.tab[data-tab="surfaceDesign"]').click();
+            this.fitView();   // the saved view came from another screen; show the whole drawing on this one
         }
 
         // Loads a design from a file chosen with the file picker.

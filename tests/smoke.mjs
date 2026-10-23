@@ -367,6 +367,28 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['ph
     await page.evaluate(() => { document.getElementById('saveLoadOverlay').style.display = 'none'; });
     expect(page.errors.length === 0, page.errors.join(' | '));
   });
+  await step('phone menus sit in one order, and loading fits the drawing to the screen', async () => {
+    const phone = await page.evaluate(() => innerWidth <= 800);
+    // the menus are in the same order on both layouts: Re-center View, Import & Export, Display Options
+    const ids = phone ? ['btnRecenterMobile', 'btnToggleFileMobile', 'btnToggleDisplayMobile'] : ['btnRecenter', 'btnToggleFile', 'btnToggleDisplay'];
+    const tops = await page.evaluate((list) => list.map((id) => document.getElementById(id).getBoundingClientRect().top), ids);
+    expect(tops[0] < tops[1] && tops[1] < tops[2], 'the menus are out of order: ' + JSON.stringify(tops));
+    // a design far from the origin and bigger than the screen, loaded through the dialog, ends up fully in view
+    const far = { format: 'tile-planner-design', version: '1.1', appState: { unitMode: 'decimal2', currentTab: 'tileLayout', zoom: 2.5, panX: -4000, panY: -3000 }, tileLayout: { tileWidthInches: 12, tileHeightInches: 12, groutWidthInches: 0.125, tileDepthInches: 0.5, groutType: 'unknown', bondOffset: 0, rotationDegrees: 0, offsetXInches: 0, offsetYInches: 0 }, surface: { vertices: [[900, 700], [1500, 700], [1500, 1200], [900, 1200]].map(([x, y]) => ({ x: x * 10.8, y: y * 10.8 })), lines: [[0, 1], [1, 2], [2, 3], [3, 0]] } };
+    await page.evaluate(() => document.getElementById('btnSaveLoad').click());
+    await page.click('#saveLoadText summary');
+    await page.fill('#saveLoadTextarea', JSON.stringify(far)); await page.click('#saveLoadLoad'); await page.waitForTimeout(600);
+    const view = await page.evaluate(() => { const pts = app.vertices.map((v) => ({ x: v.x * app.zoom + app.panX, y: v.y * app.zoom + app.panY })); return { w: app.canvas.width, h: app.canvas.height, minX: Math.min(...pts.map((p) => p.x)), maxX: Math.max(...pts.map((p) => p.x)), minY: Math.min(...pts.map((p) => p.y)), maxY: Math.max(...pts.map((p) => p.y)) }; });
+    expect(view.minX >= 0 && view.minY >= 0 && view.maxX <= view.w && view.maxY <= view.h, 'the loaded drawing is not fully in view: ' + JSON.stringify(view));
+    expect(Math.abs((view.minX + view.maxX) / 2 - view.w / 2) < 2 && Math.abs((view.minY + view.maxY) / 2 - view.h / 2) < 2, 'the loaded drawing is not centred: ' + JSON.stringify(view));
+    await page.evaluate(() => { document.getElementById('saveLoadOverlay').style.display = 'none'; });
+    // Re-center View does the same for a drawing that has drifted away
+    await page.evaluate(() => { app.panX += 3000; app.zoom = 0.2; app.redraw(); });
+    await page.evaluate(() => document.getElementById(innerWidth <= 800 ? 'btnRecenterMobile' : 'btnRecenter').click());
+    const again = await page.evaluate(() => { const pts = app.vertices.map((v) => ({ x: v.x * app.zoom + app.panX, y: v.y * app.zoom + app.panY })); return { ok: Math.min(...pts.map((p) => p.x)) >= 0 && Math.max(...pts.map((p) => p.x)) <= app.canvas.width }; });
+    expect(again.ok, 'Re-center View should bring the drawing back into view');
+    expect(page.errors.length === 0, page.errors.join(' | '));
+  });
   await step('finalize: dragging the canvas pans it, a plain click still selects, the middle button pans anywhere', async () => {
     const phone = await page.evaluate(() => innerWidth <= 800);
     if (phone) return;   // touch has its own pan and pinch

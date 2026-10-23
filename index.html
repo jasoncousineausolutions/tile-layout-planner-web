@@ -1709,7 +1709,7 @@
     
     <div id="tileListOverlay">
         <div id="tileListDialog">
-            <div id="tileListTitle">Tile List</div>
+            <div id="tileListTitle">Tile and Cut List</div>
             <div id="tileListNote"></div>
             <div id="tileListPages"></div>
             <div id="tileListButtons">
@@ -1756,7 +1756,7 @@
     <div id="canvasContainer">
         <canvas id="canvas"></canvas>
         <a id="watermark" href="https://www.jasoncousineau.com/free-tools/tile-planner" target="_blank">
-            <span>Tile Planner V1.29</span>
+            <span>JCS Tile Layout Planner V1.29</span>
             <span>Jason Cousineau Solutions Inc.</span>
         </a>
         <div id="floatingActions">
@@ -2052,7 +2052,7 @@
                 <div id="fileCollapsibleMobile" class="collapsible-section submenu submenu-tree" style="display: none;">
                     <button id="btnSketchMobile">Import from Sketch (Beta)</button>
                     <button id="btnSaveLoadMobile">Save / Load Design</button>
-                    <button id="btnTileListMobile">Tile List</button>
+                    <button id="btnTileListMobile">Tile and Cut List</button>
                     <button id="btnPrintMobile">Save Layout as Image</button>
                 </div>
                 </div>
@@ -2071,7 +2071,7 @@
             <div id="fileCollapsible" class="collapsible-section submenu submenu-tree" style="display: none;">
                 <button id="btnSketch">Import from Sketch (Beta)</button>
                 <button id="btnSaveLoad">Save / Load Design</button>
-                <button id="btnTileList">Tile List</button>
+                <button id="btnTileList">Tile and Cut List</button>
                 <button id="btnPrint">Print Layout / Save as PDF</button>
                 <button id="btnSaveImage">Save Layout as Image</button>
             </div>
@@ -2113,7 +2113,7 @@
     </div>
 
     <script>
-    /* polygon-clipping 0.15.7 (MIT, https://github.com/mfogel/polygon-clipping), used by the Tile List to cut tiles to the surface */
+    /* polygon-clipping 0.15.7 (MIT, https://github.com/mfogel/polygon-clipping), used by the Tile and Cut List to cut tiles to the surface */
 !function(t,e){"object"==typeof exports&&"undefined"!=typeof module?module.exports=e():"function"==typeof define&&define.amd?define(e):(t="undefined"!=typeof globalThis?globalThis:t||self).polygonClipping=e()}(this,(function(){"use strict";
 /**
      * splaytree v3.1.2
@@ -2249,7 +2249,7 @@
     // ============================================================
     // CUT LIST
     // ============================================================
-    // The Tile List shows each distinct piece left when tiles are cut to the surface. Pieces are compared as shapes in inches,
+    // The Tile and Cut List shows each distinct piece left when tiles are cut to the surface. Pieces are compared as shapes in inches,
     // wherever in the tile they came from, so a 4" strip cut from one edge and one cut from the other are the same cut.
     const CUT_MATCH_TOLERANCE_IN = 0.04;   // pieces closer than this at every corner are the same cut
     const FILL_PIECE = '#D8DEE9';
@@ -3201,13 +3201,13 @@
             document.getElementById('btnPrintMobile').addEventListener('click', () => this.saveAsImage());
             document.getElementById('btnSaveImage').addEventListener('click', () => this.saveAsImage());
             
-            // Tile List
+            // Tile and Cut List
             document.getElementById('btnTileList').addEventListener('click', () => this.openTileListDialog());
             document.getElementById('btnTileListMobile').addEventListener('click', () => this.openTileListDialog());
             document.getElementById('tileListClose').addEventListener('click', () => { document.getElementById('tileListOverlay').style.display = 'none'; });
             document.getElementById('tileListOverlay').addEventListener('click', (e) => { if (e.target.id === 'tileListOverlay') e.target.style.display = 'none'; });
             document.getElementById('tileListPrint').addEventListener('click', () => this.printTileList());
-            document.getElementById('tileListSave').addEventListener('click', () => this.shareImages(this.tileListPages, 'tile-list', 'Tile List'));
+            document.getElementById('tileListSave').addEventListener('click', () => this.shareImages(this.tileListPages, 'tile-and-cut-list', 'Tile and Cut List'));
             
             // Review prompt buttons (app only)
             document.getElementById('btnReviewNow').addEventListener('click', () => {
@@ -5019,7 +5019,7 @@
             }
         }
         
-        // ---- Tile List ----
+        // ---- Tile and Cut List ----
 
         // A surface as rings in layout space, in inches, for cutting tiles against it.
         surfaceRings(layout, surface) {
@@ -5086,7 +5086,7 @@
             return { groups, pieces };
         }
 
-        // The Tile List as page images (US Letter at 200 dpi): the tile estimate, then each distinct cut with its quantity.
+        // The Tile and Cut List as page images (US Letter at 200 dpi): the tile estimate, then each distinct cut with its quantity.
         renderTileListPages() {
             this.updateTileCount();
             const rows = [...document.querySelectorAll('#tileCountSummary .count-row')].map(r => [r.children[0].textContent.trim(), r.children[1] ? r.children[1].textContent.trim() : '']);
@@ -5123,7 +5123,7 @@
             
             newPage();
             c.fillStyle = INK; c.font = 'bold 60px sans-serif';
-            c.fillText('Tile List', M, y + 50); y += 90;
+            c.fillText('Tile and Cut List', M, y + 50); y += 90;
             const settings = [
                 `Tile ${fm(tileWIn)} × ${fm(tileHIn)}`,
                 `Grout ${fm(layout.groutW / ppi)}`,
@@ -5287,19 +5287,19 @@
             printBtn.style.display = saveBtn.style.display = 'none';
             overlay.style.display = 'flex';
             if (this.detectedSurfaces.length === 0 || this.selectedSurfaces.length === 0) {
-                note.textContent = 'Select the surfaces you want tiled on the Finalize tab, then open the Tile List again.';
+                note.textContent = 'Select the surfaces you want tiled on the Finalize tab, then open the Tile and Cut List again.';
                 return;
             }
             try {
                 this.tileListPages = this.renderTileListPages();
             } catch (e) {
-                note.textContent = 'The tile list could not be made: ' + e.message;
+                note.textContent = 'The tile and cut list could not be made: ' + e.message;
                 return;
             }
             note.textContent = 'Each different cut is listed once with the number of pieces needed.';
             for (const url of this.tileListPages) {
                 const img = document.createElement('img');
-                img.alt = 'Tile list page';
+                img.alt = 'Tile and cut list page';
                 img.src = url;
                 pagesEl.appendChild(img);
             }
@@ -5314,7 +5314,7 @@
             let loaded = 0;
             for (const url of this.tileListPages) {
                 const img = document.createElement('img');
-                img.alt = 'Tile list page';
+                img.alt = 'Tile and cut list page';
                 img.onload = () => {
                     if (++loaded < this.tileListPages.length) return;
                     setTimeout(() => {
@@ -6128,7 +6128,7 @@
             ctx.textAlign = 'right';
             ctx.textBaseline = 'bottom';
             ctx.font = '500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-            ctx.fillText('Tile Planner V1.29', w - 14, h - 22);
+            ctx.fillText('JCS Tile Layout Planner V1.29', w - 14, h - 22);
             ctx.font = '500 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
             ctx.fillText('Jason Cousineau Solutions Inc.', w - 14, h - 8);
             ctx.restore();

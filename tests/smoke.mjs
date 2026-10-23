@@ -416,16 +416,16 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['ph
     expect(!(await page.isVisible(section)), 'opening Display Options should close Import & Export');
     await page.click(toggle);
     if (phone) { await page.click('.tab[data-tab="finalize"]'); await page.waitForTimeout(250); }
-    expect(await page.isVisible(listBtn), 'Tile List button is not in the File section');
+    expect(await page.isVisible(listBtn), 'Tile and Cut List button is not in the Import & Export menu');
     await page.click(listBtn); await page.waitForSelector('#tileListPages img', { state: 'visible' });
     const info = await page.evaluate(() => ({ pages: document.querySelectorAll('#tileListPages img').length, w: document.querySelector('#tileListPages img').naturalWidth, h: document.querySelector('#tileListPages img').naturalHeight, save: getComputedStyle(document.getElementById('tileListSave')).display, print: getComputedStyle(document.getElementById('tileListPrint')).display }));
     expect(info.pages >= 1 && info.w === 1700 && info.h === 2200, 'unexpected tile list pages: ' + JSON.stringify(info));
     expect(info.save !== 'none' && info.print !== 'none', 'Print and Save buttons should show in a browser');
     // saving in a browser downloads one PNG per page
     const [download] = await Promise.all([page.waitForEvent('download'), page.click('#tileListSave')]);
-    expect(/^tile-list.*\.png$/.test(download.suggestedFilename()), 'unexpected file name ' + download.suggestedFilename());
+    expect(/^tile-and-cut-list.*\.png$/.test(download.suggestedFilename()), 'unexpected file name ' + download.suggestedFilename());
     await page.click('#tileListClose');
-    expect(!(await page.isVisible('#tileListOverlay')), 'Tile List did not close');
+    expect(!(await page.isVisible('#tileListOverlay')), 'Tile and Cut List did not close');
     // nothing selected: a message instead of a list
     await page.evaluate(() => { app.selectedSurfaces = []; });
     await page.click(listBtn);

@@ -2003,6 +2003,8 @@
                         <input type="checkbox" id="showAngles" disabled>
                         Show Angles
                     </label>
+                </div>
+                <div class="checkbox-group">
                     <label>
                         <input type="checkbox" id="highlightSlivers" disabled>
                         Highlight slivers
@@ -5168,7 +5170,7 @@
                 const k = cv.getContext('2d');
                 k.fillStyle = MUTED; k.font = '24px sans-serif'; k.textAlign = 'left';
                 k.fillText(`Page ${i + 1} of ${pageTotal}`, M, H - 50);
-                k.textAlign = 'right'; k.fillText('JCS Tile Planner  jasoncousineau.com', W - M, H - 50);
+                k.textAlign = 'right'; k.fillText('JCS Tile Layout Planner', W - M, H - 50);
             });
             return canvases.map(cv => cv.toDataURL('image/png'));
         }

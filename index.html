@@ -2003,6 +2003,10 @@
                         <input type="checkbox" id="showAngles" disabled>
                         Show Angles
                     </label>
+                    <label>
+                        <input type="checkbox" id="highlightSlivers" disabled>
+                        Highlight slivers
+                    </label>
                 </div>
                 
                 <div class="section-title mobile-hide">Tile Estimate (Beta)</div>
@@ -2247,6 +2251,7 @@
     // wherever in the tile they came from, so a 4" strip cut from one edge and one cut from the other are the same cut.
     const CUT_MATCH_TOLERANCE_IN = 0.04;   // pieces closer than this at every corner are the same cut
     const FILL_PIECE = '#D8DEE9';
+    const SLIVER_LIMIT_IN = 2.5 / 2.54;   // a cut edge shorter than 2.5 cm is a sliver, awkward to cut and to fix
     const CUT_MIN_AREA_SQIN = 0.01;        // anything smaller is a tile edge touching a wall, not a cut
 
     function ringArea(ring) {
@@ -2942,6 +2947,7 @@
             this.hoverSurface = null;
             this.showCutMeasurements = true;
             this.showAngles = false;
+            this.highlightSlivers = false;   // mark cut edges under SLIVER_LIMIT_IN
             
             // Initialize
             this.setupCanvas();
@@ -3272,6 +3278,7 @@
                 const status = document.getElementById('saveLoadStatus');
                 const result = this.importDesign(textarea.value);
                 if (result.success) {
+                    this.showLoadedDesign();
                     status.textContent = 'Design loaded successfully.';
                     status.className = 'success';
                     setTimeout(() => {
@@ -3391,6 +3398,10 @@
             });
             document.getElementById('showAngles').addEventListener('change', (e) => {
                 this.showAngles = e.target.checked;
+                this.redraw();
+            });
+            document.getElementById('highlightSlivers').addEventListener('change', (e) => {
+                this.highlightSlivers = e.target.checked;
                 this.redraw();
             });
         }
@@ -3953,6 +3964,7 @@
             document.getElementById('btnSelectAll').disabled = !hasSurfaces;
             document.getElementById('showCutMeasurements').disabled = !hasSelection;
             document.getElementById('showAngles').disabled = !hasSelection;
+            document.getElementById('highlightSlivers').disabled = !hasSelection;
             // Mobile clear selection button
             document.getElementById('btnClearSurfaceSelectionMobile').disabled = !hasSelection;
             this.updateTileCount();
@@ -4943,6 +4955,11 @@
             }
         }
 
+        // After a design is loaded from a file or text: the Tile Layout tab shows only a grid, so move to Surface Design to see it.
+        showLoadedDesign() {
+            if (this.currentTab === 'tileLayout') document.querySelector('.tab[data-tab="surfaceDesign"]').click();
+        }
+
         // Loads a design from a file chosen with the file picker.
         openDesignFile(file) {
             if (this.vertices.length > 0 && !confirm('This replaces the surface you have drawn now. Open the file anyway?')) return;
@@ -4950,6 +4967,7 @@
             reader.onload = () => {
                 const result = this.importDesign(String(reader.result));
                 if (result.success) {
+                    this.showLoadedDesign();
                     this.saveLoadStatus('Design loaded.', 'success');
                     setTimeout(() => { document.getElementById('saveLoadOverlay').style.display = 'none'; }, 800);
                 } else {
@@ -4977,7 +4995,7 @@
         
         printDesign() {
             try {
-                const dataUrl = this.canvas.toDataURL('image/png');
+                const dataUrl = this.renderLayoutImage();
                 const container = document.getElementById('printContainer');
                 container.innerHTML = '';
                 const img = document.createElement('img');
@@ -5307,8 +5325,37 @@
             }
         }
 
+        // The layout as a picture for printing or saving: the whole design, fitted, on white, drawn at 2.5 times the screen's
+        // sharpness with the same sizes and labels as on screen, and without the selection dots, corner handles and previews.
+        renderLayoutImage() {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const v of this.vertices) { minX = Math.min(minX, v.x); minY = Math.min(minY, v.y); maxX = Math.max(maxX, v.x); maxY = Math.max(maxY, v.y); }
+            if (!isFinite(minX)) return this.canvas.toDataURL('image/png');
+            const margin = 50, k = 2.5;
+            const boxW = Math.max(maxX - minX, 1), boxH = Math.max(maxY - minY, 1);
+            const zoom = Math.min((1100 - 2 * margin) / boxW, (1400 - 2 * margin) / boxH);
+            const width = Math.round(boxW * zoom + 2 * margin), height = Math.round(boxH * zoom + 2 * margin);
+            const off = document.createElement('canvas');
+            off.width = Math.round(width * k); off.height = Math.round(height * k);
+            const saved = { ctx: this.ctx, canvas: this.canvas, zoom: this.zoom, panX: this.panX, panY: this.panY, hover: this.hoverSurface, rects: this._labelRects };
+            try {
+                this.ctx = off.getContext('2d');
+                this.ctx.setTransform(k, 0, 0, k, 0, 0);
+                this.canvas = { width, height, style: {} };
+                this.zoom = zoom; this.panX = margin - minX * zoom; this.panY = margin - minY * zoom;
+                this.hoverSurface = null;
+                this.exporting = true;
+                this.redraw();
+                return off.toDataURL('image/png');
+            } finally {
+                this.exporting = false;
+                Object.assign(this, { ctx: saved.ctx, canvas: saved.canvas, zoom: saved.zoom, panX: saved.panX, panY: saved.panY, hoverSurface: saved.hover, _labelRects: saved.rects });
+                this.redraw();
+            }
+        }
+
         async saveAsImage() {
-            await this.shareImages([this.canvas.toDataURL('image/png')], 'tile-layout', 'Tile Layout');
+            await this.shareImages([this.renderLayoutImage()], 'tile-layout', 'Tile Layout');
         }
         
         // Saves page images: the app shares them (print, save, send); a browser downloads them.
@@ -6042,15 +6089,18 @@
             const ctx = this.ctx;
             this._labelRects = [];
             ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            if (this.exporting) { ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, this.canvas.width, this.canvas.height); }
             ctx.save();
             ctx.translate(this.panX, this.panY);
             ctx.scale(this.zoom, this.zoom);
             this.drawGrid();
             this.drawSurfaces();
             this.drawLines();
-            this.drawPreviewLines();
-            this.drawDistanceTool();
-            this.drawVertices();
+            if (!this.exporting) {
+                this.drawPreviewLines();
+                this.drawDistanceTool();
+                this.drawVertices();
+            }
             ctx.restore();
             
             if (this.isRectSelecting && this.rectStart && this.rectEnd) {
@@ -6114,10 +6164,10 @@
                     }
                 }
                 ctx.fill('evenodd');
-                if (isSelected) this.drawDotPatternInSurface(surface);
+                if (isSelected && !this.exporting) this.drawDotPatternInSurface(surface);
             }
             
-            if ((this.showCutMeasurements || this.showAngles) && this.selectedSurfaces.length > 0) {
+            if ((this.showCutMeasurements || this.showAngles || this.highlightSlivers) && this.selectedSurfaces.length > 0) {
                 for (const surfaceIdx of this.selectedSurfaces) this.drawPartialTileMeasurements(this.detectedSurfaces[surfaceIdx]);
             }
         }
@@ -6154,7 +6204,7 @@
                 if (tileInfo && tileInfo.isPartial) {
                     const clipped = this.clipTile(tile, rings);
                     if (!clipped.failed && (clipped.area < CUT_MIN_AREA_SQIN || clipped.full)) continue;   // touching a wall, or filling the surface exactly
-                    tileInfo.w = tile.w; tileInfo.h = tile.h; partialTiles.push(tileInfo);
+                    tileInfo.w = tile.w; tileInfo.h = tile.h; tileInfo.clip = clipped; partialTiles.push(tileInfo);
                 }
             }
             if (this.showCutMeasurements) {
@@ -6164,6 +6214,7 @@
             if (this.showAngles) {
                 this.drawCutAngles(surface, partialTiles, rotationRad);
             }
+            if (this.highlightSlivers) this.drawSlivers(layout, partialTiles);
         }
 
         // The tile layout in use. Every surface shares one for now; per-surface layouts only need this to look at `surface`.
@@ -6271,6 +6322,32 @@
                 }
             }
             return cutEdges;
+        }
+
+        // Marks the cut that makes a sliver: where a piece has a tile edge shorter than SLIVER_LIMIT_IN, the cut line or lines
+        // beside that short edge are drawn thick in orange.
+        drawSlivers(layout, partialTiles) {
+            const ctx = this.ctx, ppi = CONFIG.PIXELS_PER_INCH;
+            ctx.save();
+            ctx.lineCap = 'round';
+            for (const tile of partialTiles) {
+                if (!tile.clip || tile.clip.failed) continue;
+                for (const piece of tile.clip.pieces) {
+                    const ring = piece.ring, n = ring.length, marked = new Set();
+                    ring.forEach((p, i) => {
+                        const len = distance(p, ring[(i + 1) % n]);
+                        if (!p.u || len >= SLIVER_LIMIT_IN || len <= 0.05) return;   // not a short tile edge
+                        for (const j of [(i + n - 1) % n, (i + 1) % n]) if (!ring[j].u) marked.add(j);   // a cut edge touching it
+                    });
+                    for (const j of marked) {
+                        const a = layout.toWorld(ring[j].x * ppi, ring[j].y * ppi), b = layout.toWorld(ring[(j + 1) % n].x * ppi, ring[(j + 1) % n].y * ppi);
+                        ctx.strokeStyle = '#FF8C00';
+                        ctx.lineWidth = 5 / this.zoom;
+                        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+                    }
+                }
+            }
+            ctx.restore();
         }
 
         drawPartialTileLabels(partialTiles, tileW, tileH) {

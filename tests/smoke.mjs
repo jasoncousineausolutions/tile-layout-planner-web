@@ -328,6 +328,45 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['ph
     await page.evaluate(() => { const el = document.getElementById('unitMode'); el.value = 'decimal2'; el.dispatchEvent(new Event('change', { bubbles: true })); });
     expect(page.errors.length === 0, page.errors.join(' | '));
   });
+  await step('slivers, the layout picture, and loading from Tile Layout', async () => {
+    const design = (offX, top, bottom) => JSON.stringify({ format: 'tile-planner-design', version: '1.1', appState: { unitMode: 'decimal2', currentTab: 'tileLayout', zoom: 1, panX: 0, panY: 0 }, tileLayout: { tileWidthInches: 24, tileHeightInches: 12, groutWidthInches: 0.125, tileDepthInches: 0.5, groutType: 'unknown', bondOffset: 0, rotationDegrees: 0, offsetXInches: offX, offsetYInches: 0 }, surface: { vertices: [[0, 0], [100, 0], [100, 70], [0, 70], [40, top], [65, top], [65, bottom], [40, bottom]].map(([x, y]) => ({ x: x * 10.8, y: y * 10.8 })), lines: [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4]] } });
+    await page.evaluate(() => {
+      window.__strokes = new Set();
+      if (window.__spiedStroke) return;
+      window.__spiedStroke = true;
+      const d = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'strokeStyle');
+      Object.defineProperty(CanvasRenderingContext2D.prototype, 'strokeStyle', { set(v) { window.__strokes.add(String(v)); d.set.call(this, v); }, get() { return d.get.call(this); } });
+    });
+    await page.evaluate((j) => app.importDesign(j), design(0.4, 25, 50));
+    await page.click('.tab[data-tab="finalize"]'); await page.waitForTimeout(250);
+    await page.evaluate(() => { app.selectedSurfaces = [0]; app.updateTileCount(); app.redraw(); });
+    const orange = () => page.evaluate(() => window.__strokes.has('#FF8C00'));
+    await page.evaluate(() => { window.__strokes.clear(); app.redraw(); });
+    expect(!(await orange()), 'nothing should be marked until Highlight slivers is on');
+    await page.evaluate(() => { const c = document.getElementById('highlightSlivers'); c.checked = true; c.dispatchEvent(new Event('change', { bubbles: true })); window.__strokes.clear(); app.redraw(); });
+    expect(await orange(), 'the cut that leaves a sliver should be marked');
+    // a layout whose cuts all leave 2.5 cm or more has nothing to mark
+    await page.evaluate((j) => app.importDesign(j), design(0, 30, 55));
+    await page.click('.tab[data-tab="finalize"]'); await page.waitForTimeout(250);
+    await page.evaluate(() => { app.selectedSurfaces = [0]; app.updateTileCount(); window.__strokes.clear(); app.redraw(); });
+    expect(!(await orange()), 'no cut leaves a sliver here, so nothing should be marked');
+    await page.evaluate(() => { const c = document.getElementById('highlightSlivers'); c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); });
+    // the picture: fitted, opaque, sharp, and the app is left as it was
+    const before = await page.evaluate(() => ({ zoom: app.zoom, panX: app.panX, w: app.canvas.width, selected: app.selectedSurfaces.length }));
+    const img = await page.evaluate(() => new Promise((resolve) => { const url = app.renderLayoutImage(); const im = new Image(); im.onload = () => { const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const x = c.getContext('2d'); x.drawImage(im, 0, 0); resolve({ w: im.width, h: im.height, corner: [...x.getImageData(1, 1, 1, 1).data] }); }; im.src = url; }));
+    expect(img.w >= 2000 && img.w <= 3000 && img.corner[3] === 255, 'the layout picture should be large and opaque: ' + JSON.stringify(img));
+    const after = await page.evaluate(() => ({ zoom: app.zoom, panX: app.panX, w: app.canvas.width, selected: app.selectedSurfaces.length, exporting: app.exporting }));
+    expect(after.zoom === before.zoom && after.panX === before.panX && after.w === before.w && after.selected === before.selected && !after.exporting, 'making the picture changed the app: ' + JSON.stringify({ before, after }));
+    // loading a design from Tile Layout moves to Surface Design
+    await page.click('.tab[data-tab="tileLayout"]'); await page.waitForTimeout(200);
+    const saved = await page.evaluate(() => app.exportDesign());
+    await page.evaluate(() => document.getElementById('btnSaveLoad').click());
+    await page.click('#saveLoadText summary');
+    await page.fill('#saveLoadTextarea', saved); await page.click('#saveLoadLoad'); await page.waitForTimeout(600);
+    expect((await page.evaluate(() => app.currentTab)) === 'surfaceDesign', 'loading from the Tile Layout tab should move to Surface Design');
+    await page.evaluate(() => { document.getElementById('saveLoadOverlay').style.display = 'none'; });
+    expect(page.errors.length === 0, page.errors.join(' | '));
+  });
   await step('finalize: dragging the canvas pans it, a plain click still selects, the middle button pans anywhere', async () => {
     const phone = await page.evaluate(() => innerWidth <= 800);
     if (phone) return;   // touch has its own pan and pinch

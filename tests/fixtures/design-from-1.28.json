@@ -1,0 +1,96 @@
+{
+  "format": "tile-planner-design",
+  "version": "1.1",
+  "exportedAt": "2026-10-22T17:27:17.250Z",
+  "appState": {
+    "appVersion": "1.1",
+    "unitMode": "sixteenth",
+    "snapMode": "auto",
+    "distanceToolEnabled": false,
+    "currentTab": "tileLayout",
+    "zoom": 1,
+    "panX": 0,
+    "panY": 0
+  },
+  "tileLayout": {
+    "tileWidthInches": 24,
+    "tileHeightInches": 12,
+    "groutWidthInches": 0.125,
+    "tileDepthInches": 0.5,
+    "groutType": "sanded",
+    "bondOffset": 0.33,
+    "rotationDegrees": 15,
+    "offsetXInches": 3,
+    "offsetYInches": 1.5
+  },
+  "surface": {
+    "vertices": [
+      {
+        "x": 0,
+        "y": 0
+      },
+      {
+        "x": 1080,
+        "y": 0
+      },
+      {
+        "x": 1080,
+        "y": 648
+      },
+      {
+        "x": 0,
+        "y": 648
+      },
+      {
+        "x": 324,
+        "y": 216
+      },
+      {
+        "x": 540,
+        "y": 216
+      },
+      {
+        "x": 540,
+        "y": 432
+      },
+      {
+        "x": 324,
+        "y": 432
+      }
+    ],
+    "lines": [
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        3,
+        0
+      ],
+      [
+        4,
+        5
+      ],
+      [
+        5,
+        6
+      ],
+      [
+        6,
+        7
+      ],
+      [
+        7,
+        4
+      ]
+    ]
+  }
+}

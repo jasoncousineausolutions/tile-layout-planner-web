@@ -528,6 +528,38 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['ph
   });
 }
 
+await step('app save dialog: the design and the layout image go to the native Save dialog; cancelling says nothing; an older app falls back to sharing', async () => {
+  const p = await newPage({ width: 1280, height: 800 });
+  await drawRectangle(p);
+  const r = await p.evaluate(async () => {
+    const calls = [];
+    let answer = (o) => ({ saved: true, name: 'My kitchen (1).json' });
+    window.Capacitor = { Plugins: { FileSaver: { saveFile: async (o) => { calls.push(o); return answer(o); } } } };
+    document.getElementById('saveFileName').value = 'Kitchen';
+    await app.saveDesignFile();
+    const saved = { call: calls[0], status: document.getElementById('saveLoadStatus').textContent, box: document.getElementById('saveFileName').value };
+    answer = () => ({ saved: false });
+    document.getElementById('saveLoadStatus').textContent = '';
+    await app.saveDesignFile();
+    const cancelled = { status: document.getElementById('saveLoadStatus').textContent, calls: calls.length };
+    await app.saveAsImage();
+    const image = calls[calls.length - 1];
+    window.Capacitor = { Plugins: {} };   // an app build without the Save dialog: nothing is called
+    const before = calls.length;
+    let shared = false;
+    app.shareImages = async () => { shared = true; };
+    await app.saveAsImage();
+    return { saved, cancelled, image: { filename: image.filename, mimeType: image.mimeType, head: image.data.slice(0, 8) }, fallbackCalls: calls.length - before, shared };
+  });
+  const decoded = JSON.parse(Buffer.from(r.saved.call.data, 'base64').toString('utf8'));
+  expect(r.saved.call.filename === 'Kitchen.json' && r.saved.call.mimeType === 'application/json' && decoded.format === 'tile-planner-design', 'design save call is wrong: ' + JSON.stringify(r.saved.call).slice(0, 200));
+  expect(/My kitchen \(1\)\.json/.test(r.saved.status) && r.saved.box === 'My kitchen (1)', 'the name chosen in the dialog should be shown and kept: ' + JSON.stringify(r.saved));
+  expect(r.cancelled.status === '' && r.cancelled.calls === 2, 'cancelling should say nothing: ' + JSON.stringify(r.cancelled));
+  expect(r.image.filename === 'tile-layout.png' && r.image.mimeType === 'image/png' && r.image.head === 'iVBORw0K', 'image save call is wrong: ' + JSON.stringify(r.image));
+  expect(r.fallbackCalls === 0 && r.shared, 'an older app should share the image instead');
+  await p.context().close();
+});
+
 await browser.close();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) { console.log('Failed: ' + failures.join('; ')); process.exit(1); }

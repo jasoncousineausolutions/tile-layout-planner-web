@@ -4902,8 +4902,18 @@
             return name + '.json';
         }
 
+        // The app's own Save dialog (FileSaverPlugin.java): the person picks the folder and the file name.
+        // Returns the saved file's name, '' if they cancelled, or null when this build of the app doesn't have it.
+        async saveWithAppDialog(name, mimeType, base64) {
+            const cap = window.Capacitor;
+            const saver = cap && cap.Plugins && cap.Plugins.FileSaver;
+            if (!saver) return null;
+            const result = await saver.saveFile({ filename: name, mimeType, data: base64 });
+            return result && result.saved ? (result.name || name) : '';
+        }
+
         // Saves the design as a .json file. A browser that can ask where to put it does (choose the folder, replace a file);
-        // other browsers download it under the name in the box; the app shares it (save to Files, Drive, email).
+        // other browsers download it under the name in the box; the app opens its Save dialog (or, in an older build, shares it).
         async saveDesignFile() {
             const json = this.exportDesign();
             const name = this.designFileName();
@@ -4913,6 +4923,11 @@
                 try { localStorage.setItem('tilePlanner_fileName', base); } catch (err) { /* ignore */ }
             };
             try {
+                const savedAs = await this.saveWithAppDialog(name, 'application/json', btoa(unescape(encodeURIComponent(json))));
+                if (savedAs !== null) {
+                    if (savedAs) { remember(savedAs); this.saveLoadStatus('Saved ' + savedAs + '.', 'success'); }
+                    return;
+                }
                 const cap = window.Capacitor;
                 const { Filesystem, Share } = (cap && cap.Plugins) || {};
                 if (Filesystem && Share) {
@@ -5351,7 +5366,15 @@
         }
 
         async saveAsImage() {
-            await this.shareImages([this.renderLayoutImage()], 'tile-layout', 'Tile Layout');
+            const dataUrl = this.renderLayoutImage();
+            try {
+                const savedAs = await this.saveWithAppDialog('tile-layout.png', 'image/png', dataUrl.split(',')[1]);
+                if (savedAs !== null) return;
+            } catch (e) {
+                alert('Could not save the image: ' + e.message);
+                return;
+            }
+            await this.shareImages([dataUrl], 'tile-layout', 'Tile Layout');
         }
         
         // Saves page images: the app shares them (print, save, send); a browser downloads them.

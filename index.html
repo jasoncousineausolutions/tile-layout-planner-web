@@ -5366,12 +5366,13 @@
         }
 
         async saveAsImage() {
-            const dataUrl = this.renderLayoutImage();
+            let dataUrl;
             try {
+                dataUrl = this.renderLayoutImage();
                 const savedAs = await this.saveWithAppDialog('tile-layout.png', 'image/png', dataUrl.split(',')[1]);
                 if (savedAs !== null) return;
             } catch (e) {
-                alert('Could not save the image: ' + e.message);
+                alert('Could not save the image: ' + (e && e.message ? e.message : e));
                 return;
             }
             await this.shareImages([dataUrl], 'tile-layout', 'Tile Layout');

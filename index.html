@@ -5223,6 +5223,7 @@
             c.font = labelFont; c.fillStyle = '#2E3440'; c.textAlign = 'center'; c.textBaseline = 'middle';
             const rings = [pts, ...group.holes];
             const placed = [];   // label boxes already on this piece, so a label can step clear of them
+            const measured = [];   // edges already labelled: an equal, parallel edge close by (the two sides of a notch) needs no second label
             const keepInCard = (pt, tw, th) => ({ x: Math.min(Math.max(pt.x, bx + tw / 2), bx + bw - tw / 2), y: Math.min(Math.max(pt.y, by + th / 2), by + bh - th / 2) });
             for (const r of rings) {
                 const rs = ringArea(r) >= 0 ? 1 : -1;
@@ -5235,6 +5236,9 @@
                     const nx = rs * dy / dl, ny = -rs * dx / dl;   // points out of the piece (into the cutout for a hole)
                     const text = fm(len);
                     const tw = c.measureText(text).width, th = 24;
+                    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+                    if (measured.some(m => m.text === text && Math.abs(m.dx * dy - m.dy * dx) < 0.05 * m.dl * dl && Math.hypot(m.mid.x - mid.x, m.mid.y - mid.y) < 3 * tw)) return;
+                    measured.push({ text, mid, dx, dy, dl });
                     let off = 14 + Math.abs(nx) * tw / 2 + Math.abs(ny) * th / 2;
                     const spot = () => ({ x: (a.x + b.x) / 2 + nx * off, y: (a.y + b.y) / 2 + ny * off });
                     const clash = (q) => placed.some(r2 => Math.abs(r2.x - q.x) < (r2.w + tw) / 2 && Math.abs(r2.y - q.y) < th);

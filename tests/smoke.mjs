@@ -592,6 +592,21 @@ await step('layout image: full size in a browser, kept small in the app (low mem
   await p.context().close();
 });
 
+await step('cut piece pictures: equal parallel edges close together get one label (both sides of a notch), far apart ones keep both', async () => {
+  const p = await newPage({ width: 1280, height: 800 });
+  const texts = await p.evaluate(() => {
+    const seen = [];
+    const c = new Proxy({}, { get: (t, k) => k === 'measureText' ? (s) => ({ width: s.length * 13 }) : k === 'fillText' ? (s) => seen.push(s) : () => {}, set: () => true });
+    const ring = [[0, 0], [8, 0], [8, 6], [16, 6], [16, 0], [24, 0], [24, 12], [0, 12]].map(([x, y]) => ({ x, y, u: true }));
+    app.drawCutPiece(c, { ring, holes: [] }, 0, 0, 600, 300, (n) => n.toFixed(2) + '"');
+    return seen;
+  });
+  const count = (t) => texts.filter((x) => x === t).length;
+  expect(count('6.00"') === 1, 'the two 6.00" sides of the notch should be labelled once: ' + JSON.stringify(texts));
+  expect(count('12.00"') === 2 && count('24.00"') === 1, 'the 12.00" sides are far apart and keep both labels: ' + JSON.stringify(texts));
+  await p.context().close();
+});
+
 await browser.close();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) { console.log('Failed: ' + failures.join('; ')); process.exit(1); }

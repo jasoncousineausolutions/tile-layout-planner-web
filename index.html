@@ -76,6 +76,7 @@
             display: flex;
             flex-direction: column;
             border-left: 1px solid var(--steel-blue);
+            padding-top: var(--safe-top);   /* sideways phone: keep the tabs clear of the status bar */
         }
         
         #tabBar {
@@ -1588,6 +1589,7 @@
                 min-width: 100%;
                 max-height: 50vh;
                 max-height: 50dvh;
+                padding-top: 0;
                 border-left: none;
                 border-top: 1px solid var(--steel-blue);
                 overflow-y: auto;
@@ -4900,8 +4902,29 @@
             return name + '.json';
         }
 
+        // The app's own Save dialog (FileSaverPlugin.java): the person picks the folder and the file name.
+        // Returns the saved file's name, '' if they cancelled, or null when this build of the app doesn't have it.
+        async saveWithAppDialog(name, mimeType, base64) {
+            const cap = window.Capacitor;
+            const saver = cap && cap.Plugins && cap.Plugins.FileSaver;
+            if (!saver) return null;
+            const result = await saver.saveFile({ filename: name, mimeType, data: base64 });
+            return result && result.saved ? (result.name || name) : '';
+        }
+
+        // The app records why it last closed unexpectedly (FileSaverPlugin.lastCrash) and shows it once, so it can be reported.
+        async reportLastCrash() {
+            try {
+                const cap = window.Capacitor;
+                const saver = cap && cap.Plugins && cap.Plugins.FileSaver;
+                if (!saver || !saver.lastCrash) return;
+                const r = await saver.lastCrash();
+                if (r && r.text) alert('The app closed unexpectedly last time. Details:\n\n' + r.text.slice(0, 1800));
+            } catch (e) { /* an older app build has no lastCrash */ }
+        }
+
         // Saves the design as a .json file. A browser that can ask where to put it does (choose the folder, replace a file);
-        // other browsers download it under the name in the box; the app shares it (save to Files, Drive, email).
+        // other browsers download it under the name in the box; the app opens its Save dialog (or, in an older build, shares it).
         async saveDesignFile() {
             const json = this.exportDesign();
             const name = this.designFileName();
@@ -4911,6 +4934,11 @@
                 try { localStorage.setItem('tilePlanner_fileName', base); } catch (err) { /* ignore */ }
             };
             try {
+                const savedAs = await this.saveWithAppDialog(name, 'application/json', btoa(unescape(encodeURIComponent(json))));
+                if (savedAs !== null) {
+                    if (savedAs) { remember(savedAs); this.saveLoadStatus('Saved ' + savedAs + '.', 'success'); }
+                    return;
+                }
                 const cap = window.Capacitor;
                 const { Filesystem, Share } = (cap && cap.Plugins) || {};
                 if (Filesystem && Share) {
@@ -5325,10 +5353,13 @@
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             for (const v of this.vertices) { minX = Math.min(minX, v.x); minY = Math.min(minY, v.y); maxX = Math.max(maxX, v.x); maxY = Math.max(maxY, v.y); }
             if (!isFinite(minX)) return this.canvas.toDataURL('image/png');
-            const margin = 50, k = 2.5;
+            const margin = 50;
+            let k = 2.5;
             const boxW = Math.max(maxX - minX, 1), boxH = Math.max(maxY - minY, 1);
             const zoom = Math.min((1100 - 2 * margin) / boxW, (1400 - 2 * margin) / boxH);
             const width = Math.round(boxW * zoom + 2 * margin), height = Math.round(boxH * zoom + 2 * margin);
+            // the app keeps the picture small (about 3.5 million pixels): a bigger one can get the app closed for low memory while the Save screen is open
+            if (window.Capacitor) k = Math.min(k, Math.sqrt(3.5e6 / (width * height)));
             const off = document.createElement('canvas');
             off.width = Math.round(width * k); off.height = Math.round(height * k);
             const saved = { ctx: this.ctx, canvas: this.canvas, zoom: this.zoom, panX: this.panX, panY: this.panY, hover: this.hoverSurface, rects: this._labelRects };
@@ -5340,7 +5371,9 @@
                 this.hoverSurface = null;
                 this.exporting = true;
                 this.redraw();
-                return off.toDataURL('image/png');
+                const dataUrl = off.toDataURL('image/png');
+                off.width = off.height = 0;   // give the picture's memory back straight away
+                return dataUrl;
             } finally {
                 this.exporting = false;
                 Object.assign(this, { ctx: saved.ctx, canvas: saved.canvas, zoom: saved.zoom, panX: saved.panX, panY: saved.panY, hoverSurface: saved.hover, _labelRects: saved.rects });
@@ -5349,7 +5382,16 @@
         }
 
         async saveAsImage() {
-            await this.shareImages([this.renderLayoutImage()], 'tile-layout', 'Tile Layout');
+            let dataUrl;
+            try {
+                dataUrl = this.renderLayoutImage();
+                const savedAs = await this.saveWithAppDialog('tile-layout.png', 'image/png', dataUrl.split(',')[1]);
+                if (savedAs !== null) return;
+            } catch (e) {
+                alert('Could not save the image: ' + (e && e.message ? e.message : e));
+                return;
+            }
+            await this.shareImages([dataUrl], 'tile-layout', 'Tile Layout');
         }
         
         // Saves page images: the app shares them (print, save, send); a browser downloads them.
@@ -6964,6 +7006,7 @@
     }
 
     const app = new TileApp();
+    app.reportLastCrash();
     </script>
 </body>
 </html>

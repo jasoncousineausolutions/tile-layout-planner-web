@@ -607,6 +607,36 @@ await step('cut piece pictures: equal parallel edges close together get one labe
   await p.context().close();
 });
 
+await step('islands smaller than a tile: their cut tiles get labels, are in the Tile and Cut List, and are not counted as whole tiles', async () => {
+  const K = 10.8;
+  const design = (island) => JSON.stringify({ format: 'tile-planner-design', version: '1.1', appState: { unitMode: 'decimal2', snapMode: 'auto', currentTab: 'surfaceDesign', zoom: 1, panX: 40, panY: 40 },
+    tileLayout: { tileWidthInches: 12, tileHeightInches: 12, groutWidthInches: 0.125, tileDepthInches: 0.5, bondOffset: 0, pattern: 'grid', rotationDegrees: 0, offsetXInches: 0, offsetYInches: 0 },
+    surface: { vertices: [[0, 0], [90, 0], [90, 80], [0, 80], ...island].map(([x, y]) => ({ x: x * K, y: y * K })), lines: [[0, 1], [1, 2], [2, 3], [3, 0], ...(island.length ? [[4, 5], [5, 6], [6, 7], [7, 4]] : [])] } });
+  const p = await newPage({ width: 1280, height: 800 });
+  const measure = async (island) => {
+    await p.evaluate((j) => app.importDesign(j), design(island));
+    await p.click('.tab[data-tab="finalize"]'); await p.waitForTimeout(250);
+    return p.evaluate(() => {
+      app.selectedSurfaces = [0]; app.updateTileCount(); app.panX = 40; app.panY = 40; app.zoom = 1.1;
+      const labels = []; const draw = app.drawMeasurementLabel.bind(app);
+      app.drawMeasurementLabel = (c, t, m, a) => { labels.push(t); return draw(c, t, m, a); };
+      app.redraw(); app.drawMeasurementLabel = draw;
+      const row = (label) => [...document.querySelectorAll('#tileCountSummary .count-row')].find((r) => r.textContent.startsWith(label));
+      const count = (label) => parseInt(row(label).querySelector('.count-value').textContent, 10);
+      const list = app.computeCutList();
+      return { labels, full: count('Full tiles'), total: count('Estimated tiles'), groups: list.groups.length, withHole: list.groups.filter((g) => g.holes && g.holes.length).length };
+    });
+  };
+  const none = await measure([]);
+  const inside = await measure([[38, 38], [44, 38], [44, 43], [38, 43]]);            // 6 x 5 in, inside one 12 in tile
+  const straddle = await measure([[46, 38], [51, 38], [51, 42], [46, 42]]);          // 5 x 4 in, across a joint
+  expect(['6.00"', '5.00"'].every((t) => inside.labels.includes(t)), 'an island inside one tile should be labelled 6.00" and 5.00": ' + JSON.stringify(inside.labels));
+  expect(straddle.labels.includes('4.00"') && straddle.labels.includes('2.38"'), 'an island across a joint should be labelled on both tiles: ' + JSON.stringify(straddle.labels));
+  expect(inside.withHole === 1 && straddle.groups > none.groups, 'the Tile and Cut List should include the cut tile(s): ' + JSON.stringify({ none, inside, straddle }));
+  expect(inside.full === none.full - 1 && straddle.full === none.full - 2 && inside.total === none.total && straddle.total === none.total, 'the tiles with an island are not whole tiles, and the total is unchanged: ' + JSON.stringify({ none, inside, straddle }));
+  await p.context().close();
+});
+
 await browser.close();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) { console.log('Failed: ' + failures.join('; ')); process.exit(1); }

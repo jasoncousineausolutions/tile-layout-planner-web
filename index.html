@@ -4912,6 +4912,17 @@
             return result && result.saved ? (result.name || name) : '';
         }
 
+        // The app records why it last closed unexpectedly (FileSaverPlugin.lastCrash) and shows it once, so it can be reported.
+        async reportLastCrash() {
+            try {
+                const cap = window.Capacitor;
+                const saver = cap && cap.Plugins && cap.Plugins.FileSaver;
+                if (!saver || !saver.lastCrash) return;
+                const r = await saver.lastCrash();
+                if (r && r.text) alert('The app closed unexpectedly last time. Details:\n\n' + r.text.slice(0, 1800));
+            } catch (e) { /* an older app build has no lastCrash */ }
+        }
+
         // Saves the design as a .json file. A browser that can ask where to put it does (choose the folder, replace a file);
         // other browsers download it under the name in the box; the app opens its Save dialog (or, in an older build, shares it).
         async saveDesignFile() {
@@ -6990,6 +7001,7 @@
     }
 
     const app = new TileApp();
+    app.reportLastCrash();
     </script>
 </body>
 </html>

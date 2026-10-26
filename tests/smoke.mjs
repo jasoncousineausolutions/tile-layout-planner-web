@@ -560,6 +560,23 @@ await step('app save dialog: the design and the layout image go to the native Sa
   await p.context().close();
 });
 
+await step('app crash report: shows why the app last closed once, and says nothing when there is nothing', async () => {
+  const p = await newPage({ width: 1280, height: 800 });
+  p.removeAllListeners('dialog');
+  const shown = [];
+  p.on('dialog', (d) => { shown.push(d.message()); d.accept(); });
+  await p.evaluate(async () => {
+    window.Capacitor = { Plugins: { FileSaver: { lastCrash: async () => ({ text: 'java.lang.OutOfMemoryError: example' }) } } };
+    await app.reportLastCrash();
+    window.Capacitor = { Plugins: { FileSaver: { lastCrash: async () => ({}) } } };
+    await app.reportLastCrash();
+    window.Capacitor = { Plugins: { FileSaver: {} } };   // an older app build
+    await app.reportLastCrash();
+  });
+  expect(shown.length === 1 && /closed unexpectedly/.test(shown[0]) && /OutOfMemoryError/.test(shown[0]), 'crash report dialogs were: ' + JSON.stringify(shown));
+  await p.context().close();
+});
+
 await browser.close();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) { console.log('Failed: ' + failures.join('; ')); process.exit(1); }

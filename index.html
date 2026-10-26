@@ -3991,7 +3991,13 @@
                     let cornersInside = 0;
                     for (const corner of tileCorners) if (this.pointInSurface(corner, surface)) cornersInside++;
                     
-                    if (cornersInside === 4) { fullTiles++; continue; }
+                    if (cornersInside === 4) {
+                        if (!this.boundaryTouchesTile(tileCorners, surface, layout.tileW, layout.tileH)) { fullTiles++; continue; }
+                        // an island smaller than the tile (or a notch in a wall) cuts into it: a whole tile, but one with no off-cut to pair
+                        const whole = this.clipTile(tile, rings);
+                        if (!whole.failed && whole.full) fullTiles++; else diagonalCuts++;
+                        continue;
+                    }
                     
                     if (cornersInside === 0) {
                         let hasIntersection = false;
@@ -6265,11 +6271,26 @@
             });
         }
 
+        // True when the surface's outline (an island or a notch in a wall) crosses a tile whose four corners are all on the surface:
+        // an island smaller than a tile sits inside it, or straddles a joint, without covering any corner.
+        boundaryTouchesTile(tileCorners, surface, tileW, tileH) {
+            const rings = [this.getSurfaceOuterBoundary(surface).map(i => this.vertices[i])];
+            if (surface.holes) for (const hole of surface.holes) rings.push(hole.map(i => this.vertices[i]));
+            for (const ring of rings) {
+                for (let i = 0; i < ring.length; i++) {
+                    const a = ring[i], b = ring[(i + 1) % ring.length];
+                    if (this.pointInTileBounds(a, tileCorners, tileW, tileH)) return true;
+                    for (let j = 0; j < 4; j++) if (lineSegmentIntersection(a, b, tileCorners[j], tileCorners[(j + 1) % 4])) return true;
+                }
+            }
+            return false;
+        }
+
         analyzeTileIntersectionWithSurface(tileCorners, surface, tileW, tileH) {
             const outerBoundary = this.getSurfaceOuterBoundary(surface);
             let cornersInside = 0;
             for (const corner of tileCorners) if (this.pointInSurface(corner, surface)) cornersInside++;
-            if (cornersInside === 4) return null;
+            if (cornersInside === 4 && !this.boundaryTouchesTile(tileCorners, surface, tileW, tileH)) return null;   // a whole tile
             
             if (cornersInside === 0) {
                 let hasIntersection = false;

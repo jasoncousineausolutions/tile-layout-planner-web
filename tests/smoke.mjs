@@ -577,6 +577,21 @@ await step('app crash report: shows why the app last closed once, and says nothi
   await p.context().close();
 });
 
+await step('layout image: full size in a browser, kept small in the app (low memory)', async () => {
+  const p = await newPage({ width: 1280, height: 800 });
+  await drawRectangle(p);
+  const dims = await p.evaluate(() => {
+    const size = (u) => { const b = atob(u.split(',')[1].slice(0, 40)); const n = (i) => (b.charCodeAt(i) << 24 | b.charCodeAt(i + 1) << 16 | b.charCodeAt(i + 2) << 8 | b.charCodeAt(i + 3)) >>> 0; return { w: n(16), h: n(20) }; };
+    const browser = size(app.renderLayoutImage());
+    window.Capacitor = { Plugins: {} };
+    const inApp = size(app.renderLayoutImage());
+    return { browser, inApp };
+  });
+  expect(dims.browser.w * dims.browser.h > 5e6, 'a browser should get the full size picture: ' + JSON.stringify(dims.browser));
+  expect(dims.inApp.w * dims.inApp.h <= 3.6e6 && dims.inApp.w > 1500, 'the app picture should be about 3.5 million pixels: ' + JSON.stringify(dims.inApp));
+  await p.context().close();
+});
+
 await browser.close();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) { console.log('Failed: ' + failures.join('; ')); process.exit(1); }

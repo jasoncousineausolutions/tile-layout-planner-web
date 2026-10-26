@@ -5353,10 +5353,13 @@
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             for (const v of this.vertices) { minX = Math.min(minX, v.x); minY = Math.min(minY, v.y); maxX = Math.max(maxX, v.x); maxY = Math.max(maxY, v.y); }
             if (!isFinite(minX)) return this.canvas.toDataURL('image/png');
-            const margin = 50, k = 2.5;
+            const margin = 50;
+            let k = 2.5;
             const boxW = Math.max(maxX - minX, 1), boxH = Math.max(maxY - minY, 1);
             const zoom = Math.min((1100 - 2 * margin) / boxW, (1400 - 2 * margin) / boxH);
             const width = Math.round(boxW * zoom + 2 * margin), height = Math.round(boxH * zoom + 2 * margin);
+            // the app keeps the picture small (about 3.5 million pixels): a bigger one can get the app closed for low memory while the Save screen is open
+            if (window.Capacitor) k = Math.min(k, Math.sqrt(3.5e6 / (width * height)));
             const off = document.createElement('canvas');
             off.width = Math.round(width * k); off.height = Math.round(height * k);
             const saved = { ctx: this.ctx, canvas: this.canvas, zoom: this.zoom, panX: this.panX, panY: this.panY, hover: this.hoverSurface, rects: this._labelRects };
@@ -5368,7 +5371,9 @@
                 this.hoverSurface = null;
                 this.exporting = true;
                 this.redraw();
-                return off.toDataURL('image/png');
+                const dataUrl = off.toDataURL('image/png');
+                off.width = off.height = 0;   // give the picture's memory back straight away
+                return dataUrl;
             } finally {
                 this.exporting = false;
                 Object.assign(this, { ctx: saved.ctx, canvas: saved.canvas, zoom: saved.zoom, panX: saved.panX, panY: saved.panY, hoverSurface: saved.hover, _labelRects: saved.rects });

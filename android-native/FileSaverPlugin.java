@@ -52,20 +52,21 @@ public class FileSaverPlugin extends Plugin {
         try {
             if (Build.VERSION.SDK_INT >= 30) {
                 ActivityManager am = (ActivityManager) getContext().getSystemService(Context.ACTIVITY_SERVICE);
-                List<ApplicationExitInfo> exits = am.getHistoricalProcessExitReasons(null, 0, 1);
+                List<ApplicationExitInfo> exits = am.getHistoricalProcessExitReasons(null, 0, 10);
                 SharedPreferences prefs = getContext().getSharedPreferences("exit-report", Context.MODE_PRIVATE);
-                if (!exits.isEmpty()) {
-                    ApplicationExitInfo info = exits.get(0);
+                // only the app's own process (not the web view's helper processes), and only endings that mean trouble
+                for (ApplicationExitInfo info : exits) {
+                    if (!getContext().getPackageName().equals(info.getProcessName())) continue;
                     int reason = info.getReason();
-                    boolean ordinary = reason == ApplicationExitInfo.REASON_EXIT_SELF || reason == ApplicationExitInfo.REASON_USER_REQUESTED
-                            || reason == ApplicationExitInfo.REASON_USER_STOPPED || reason == ApplicationExitInfo.REASON_PACKAGE_STATE_CHANGE
-                            || reason == ApplicationExitInfo.REASON_PACKAGE_UPDATED;
-                    if (!ordinary && info.getTimestamp() > prefs.getLong("reported", 0)) {
+                    boolean trouble = (reason >= ApplicationExitInfo.REASON_SIGNALED && reason <= ApplicationExitInfo.REASON_ANR)
+                            || reason == ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE;
+                    if (trouble && info.getTimestamp() > prefs.getLong("reported", 0)) {
                         text.append("Android says: reason ").append(reason).append(", status ").append(info.getStatus())
                                 .append(", ").append(info.getDescription()).append(", ").append(new Date(info.getTimestamp())).append('\n');
                         text.append("(reasons: 2 killed, 3 low memory, 4 crash, 5 native crash, 6 not responding)\n");
                         prefs.edit().putLong("reported", info.getTimestamp()).apply();
                     }
+                    break;   // the newest ending of the app's own process is the one that matters
                 }
             }
         } catch (Exception e) {

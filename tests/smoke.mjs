@@ -808,6 +808,26 @@ await step('pinwheel: the grout is worked out from the rectangle and the square,
   await p.context().close();
 });
 
+await step('typing in the tile height and grout boxes is never overwritten, in every pattern', async () => {
+  const p = await newPage({ width: 1280, height: 800 });
+  for (const pattern of ['grid', 'stepped', 'herringbone', 'basketweave', 'hopscotch', 'pinwheel', 'hexagon', 'grid']) {
+    await p.selectOption('#tilePattern', pattern);
+    if (pattern === 'hexagon') { expect(await p.isDisabled('#tileHeight'), 'the hexagon height box should be locked'); continue; }
+    expect(!(await p.isDisabled('#tileHeight')), `the height box should be editable for ${pattern}`);
+    await p.click('#tileHeight', { clickCount: 3 }); await p.keyboard.type('15');
+    expect((await p.inputValue('#tileHeight')) === '15', `typing 15 in the height box for ${pattern} gave ${await p.inputValue('#tileHeight')}`);
+    expect(await p.evaluate(() => app.tileHeightInches) === 15, `the height should be 15 for ${pattern}`);
+    await p.click('#tileHeight', { clickCount: 3 }); await p.keyboard.press('Backspace');
+    expect((await p.inputValue('#tileHeight')) === '', `the height box should be able to be emptied for ${pattern}`);
+    await p.keyboard.type('12');
+    if (!(await p.isDisabled('#groutWidth'))) {
+      await p.click('#groutWidth', { clickCount: 3 }); await p.keyboard.type('0.2');
+      expect((await p.inputValue('#groutWidth')) === '0.2', `typing 0.2 in the grout box for ${pattern} gave ${await p.inputValue('#groutWidth')}`);
+    }
+  }
+  await p.context().close();
+});
+
 await browser.close();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) { console.log('Failed: ' + failures.join('; ')); process.exit(1); }

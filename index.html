@@ -4555,8 +4555,14 @@
             document.getElementById('tile2Height').closest('.input-group').style.display = pinwheel ? 'none' : '';
             // a hexagon is set by its width across the flats; the height box shows the corner-to-corner height and cannot be typed in
             const hexagon = this.pattern === 'hexagon';
-            document.getElementById('tileHeight').disabled = hexagon;
-            document.getElementById('tileHeight').value = fieldLength(hexagon ? this.hexagonHeightInches() : this.tileHeightInches, this.unitMode);
+            const heightBox = document.getElementById('tileHeight');
+            if (hexagon) {
+                heightBox.disabled = true;
+                heightBox.value = fieldLength(this.hexagonHeightInches(), this.unitMode);
+            } else if (heightBox.disabled) {
+                heightBox.disabled = false;   // leaving a hexagon: give back the typed height (never rewrite the box while it is being typed in)
+                heightBox.value = fieldLength(this.tileHeightInches, this.unitMode);
+            }
             document.getElementById('tile2Row').style.display = TILE_PATTERNS[this.pattern].twoTile ? '' : 'none';
             document.getElementById('bondCombo').style.display = weaving ? 'none' : '';
             const readout = document.getElementById('weaveReadout');
@@ -4570,7 +4576,7 @@
             const locked = (weaving && fit.ok) || (pinwheel && pinFit.ok);
             groutInput.disabled = locked;
             groutButton.disabled = locked;
-            groutInput.value = format(weaving && fit.ok ? fit.grout : pinwheel && pinFit.ok ? pinFit.grout : this.groutWidthInches);
+            if (locked || document.activeElement !== groutInput) groutInput.value = format(weaving && fit.ok ? fit.grout : pinwheel && pinFit.ok ? pinFit.grout : this.groutWidthInches);   // not while it is being typed in
             hint.className = 'hint-text';
             if (pinwheel) {
                 hint.style.display = '';

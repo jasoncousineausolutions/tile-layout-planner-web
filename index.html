@@ -676,7 +676,7 @@
             flex: 1;
         }
         
-        #saveLoadOverlay {
+        #saveLoadOverlay, #sketchKeyOverlay {
             display: none;
             position: fixed;
             top: 0;
@@ -690,7 +690,7 @@
             padding: var(--space-md);
         }
         
-        #saveLoadDialog {
+        #saveLoadDialog, #sketchKeyDialog {
             background: var(--white);
             border-radius: 8px;
             padding: var(--space-lg);
@@ -703,7 +703,7 @@
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }
         
-        #saveLoadTitle {
+        #saveLoadTitle, #sketchKeyTitle {
             font-size: 18px;
             font-weight: 600;
             color: var(--slate-gray);
@@ -748,24 +748,24 @@
             overflow: auto;
         }
         
-        #saveLoadStatus {
+        #saveLoadStatus, #sketchKeyStatus {
             font-size: 13px;
             min-height: 18px;
             margin-bottom: var(--space-sm);
             color: var(--steel-blue);
         }
         
-        #saveLoadStatus.success { color: #2d8659; }
-        #saveLoadStatus.error { color: #c00; }
+        #saveLoadStatus.success, #sketchKeyStatus.success { color: #2d8659; }
+        #saveLoadStatus.error, #sketchKeyStatus.error { color: #c00; }
         
-        #saveLoadButtons {
+        #saveLoadButtons, #sketchKeyButtons {
             display: flex;
             justify-content: flex-end;
             gap: var(--space-sm);
             flex-wrap: wrap;
         }
         
-        #saveLoadButtons button {
+        #saveLoadButtons button, #sketchKeyButtons button {
             width: auto;
             padding: 10px 20px;
             margin: 0;
@@ -1649,6 +1649,7 @@
     <div id="sketchOverlay">
         <div id="sketchDialog">
             <div id="sketchTitle">Import from Sketch <span id="sketchBeta">BETA</span></div>
+            <div id="sketchOwnKey" style="display: none; font-size: 13px; margin-bottom: var(--space-sm); color: #2d8659;">Using your own key (Import &amp; Export &rarr; Sketch reader key).</div>
             <div id="sketchBetaNotice">
                 <strong>Experimental beta.</strong> This feature may misread sketches, and it may be unavailable at times because of
                 daily usage limits. If it is, you can always draw your surface by hand.
@@ -1693,6 +1694,25 @@
                 <button id="tileListPrint">Print</button>
                 <button id="tileListSave">Save as Image</button>
                 <button id="tileListClose">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="sketchKeyOverlay">
+        <div id="sketchKeyDialog">
+            <div id="sketchKeyTitle">Sketch reader key</div>
+            <div class="file-action">
+                <p class="hint-text">Import from Sketch is read by Google's Gemini AI, and the shared reader has a daily limit. If it is not available, or you would rather not depend on it, you can use your own key. Google gives out free keys at
+                    <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.</p>
+                <label for="sketchKeyInput">Your key</label>
+                <input type="password" id="sketchKeyInput" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your key here">
+                <p class="hint-text">The key is saved only on this device. It is sent with each sketch to the sketch reader at jasoncousineau.com, which uses it for that one request and does not keep it. Without a key, the shared reader is used.</p>
+            </div>
+            <div id="sketchKeyStatus"></div>
+            <div id="sketchKeyButtons">
+                <button id="sketchKeySave" class="primary">Save key</button>
+                <button id="sketchKeyRemove">Remove key</button>
+                <button id="sketchKeyClose">Close</button>
             </div>
         </div>
     </div>
@@ -2012,6 +2032,7 @@
                 <button id="btnToggleFileMobile" class="toggle-section-btn" aria-expanded="false" style="margin-top: 0;">Import &amp; Export</button>
                 <div id="fileCollapsibleMobile" class="collapsible-section submenu submenu-tree" style="display: none;">
                     <button id="btnSketchMobile">Import from Sketch (Beta)</button>
+                    <button id="btnSketchKeyMobile">Sketch reader key</button>
                     <button id="btnSaveLoadMobile">Save / Load Design</button>
                     <button id="btnTileListMobile">Tile and Cut List</button>
                     <button id="btnPrintMobile">Save Layout as Image</button>
@@ -2060,6 +2081,7 @@
             <button id="btnToggleFile" class="toggle-section-btn" aria-expanded="false" style="margin-top: 0;">Import &amp; Export</button>
             <div id="fileCollapsible" class="collapsible-section submenu submenu-tree" style="display: none;">
                 <button id="btnSketch">Import from Sketch (Beta)</button>
+                <button id="btnSketchKey">Sketch reader key</button>
                 <button id="btnSaveLoad">Save / Load Design</button>
                 <button id="btnTileList">Tile and Cut List</button>
                 <button id="btnPrint">Print Layout / Save as PDF</button>
@@ -3285,6 +3307,12 @@
             document.getElementById('btnSaveLoadMobile').addEventListener('click', () => this.openSaveLoadDialog());
             document.getElementById('btnSketch').addEventListener('click', () => this.openSketchDialog());
             document.getElementById('btnSketchMobile').addEventListener('click', () => this.openSketchDialog());
+            document.getElementById('btnSketchKey').addEventListener('click', () => this.openSketchKeyDialog());
+            document.getElementById('btnSketchKeyMobile').addEventListener('click', () => this.openSketchKeyDialog());
+            document.getElementById('sketchKeySave').addEventListener('click', () => this.saveSketchKey());
+            document.getElementById('sketchKeyRemove').addEventListener('click', () => this.removeSketchKey());
+            document.getElementById('sketchKeyClose').addEventListener('click', () => { document.getElementById('sketchKeyOverlay').style.display = 'none'; });
+            document.getElementById('sketchKeyOverlay').addEventListener('click', (e) => { if (e.target.id === 'sketchKeyOverlay') e.target.style.display = 'none'; });
             document.getElementById('sketchClose').addEventListener('click', () => {
                 this.cancelSketch();
                 document.getElementById('sketchOverlay').style.display = 'none';
@@ -4828,7 +4856,51 @@
             el.className = kind || '';
         }
 
+        // The sketch reader key the person has saved on this device (never in a design file), or '' if none.
+        getSketchKey() {
+            try {
+                const key = localStorage.getItem('tilePlanner_sketchKey') || '';
+                return /^[A-Za-z0-9_-]{20,100}$/.test(key) ? key : '';
+            } catch (err) { return ''; }
+        }
+
+        showSketchKeyState(message, kind) {
+            const key = this.getSketchKey();
+            const status = document.getElementById('sketchKeyStatus');
+            status.className = kind || '';
+            status.textContent = message || (key ? 'A key ending ' + key.slice(-4) + ' is saved on this device. It is used for Import from Sketch.' : 'No key saved. The shared sketch reader is used.');
+            document.getElementById('sketchKeyRemove').disabled = !key;
+        }
+
+        openSketchKeyDialog() {
+            document.getElementById('sketchKeyInput').value = '';
+            this.showSketchKeyState();
+            document.getElementById('sketchKeyOverlay').style.display = 'flex';
+        }
+
+        saveSketchKey() {
+            const input = document.getElementById('sketchKeyInput');
+            const key = input.value.trim();
+            if (!/^[A-Za-z0-9_-]{20,100}$/.test(key)) {
+                this.showSketchKeyState('That does not look like a key. Paste the whole key from Google AI Studio, with no spaces.', 'error');
+                return;
+            }
+            try { localStorage.setItem('tilePlanner_sketchKey', key); } catch (err) {
+                this.showSketchKeyState('This browser would not let the key be saved on this device.', 'error');
+                return;
+            }
+            input.value = '';
+            this.showSketchKeyState('Saved on this device.', 'success');
+        }
+
+        removeSketchKey() {
+            try { localStorage.removeItem('tilePlanner_sketchKey'); } catch (err) { /* ignore */ }
+            document.getElementById('sketchKeyInput').value = '';
+            this.showSketchKeyState('Key removed. The shared sketch reader is used.', 'success');
+        }
+
         openSketchDialog() {
+            document.getElementById('sketchOwnKey').style.display = this.getSketchKey() ? '' : 'none';
             // The photo and hints are kept between openings, so a wrong result can be retried with more hints.
             this.sketchResult = null;
             document.getElementById('sketchLoad').style.display = 'none';
@@ -4936,8 +5008,13 @@
         sketchErrorMessage(code) {
             const unavailable = 'Sketch import is a beta feature and is not available right now (it may have reached its usage limit). ' +
                 'Please try again later, or draw your surface by hand.';
+            const ownKey = this.getSketchKey();
             switch (code) {
+                case 'bad_key':
+                    return 'Google did not accept your key. Check it in Import & Export \u2192 Sketch reader key, or remove it to use the shared reader.';
                 case 'quota':
+                    if (ownKey) return 'Your key has reached its usage limit for now. Try again later.';
+                    return unavailable;
                 case 'unavailable':
                 case 'disabled':
                     return unavailable;
@@ -4991,9 +5068,10 @@
             this.sketchCancelled = false;
             const timer = setTimeout(() => controller.abort(), 65000);
             try {
+                const ownKey = this.getSketchKey();
                 const response = await fetch(CONFIG.SKETCH_API_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', ...(ownKey ? { 'X-Gemini-Key': ownKey } : {}) },
                     body: JSON.stringify({ image: this.sketchImage.base64, mimeType: this.sketchImage.mimeType, notes }),
                     signal: controller.signal
                 });

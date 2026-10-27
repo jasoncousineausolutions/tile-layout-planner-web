@@ -870,6 +870,56 @@ await step('distance tool: shown where there is a mouse, hidden on a touch scree
   await ctx.close();
 });
 
+await step('sketch reader key: saved only on the device, checked, sent with each sketch, removable, and never put in a design', async () => {
+  const p = await newPage({ width: 1280, height: 800 });
+  await p.evaluate(() => { try { localStorage.removeItem('tilePlanner_sketchKey'); } catch (e) { /* ignore */ } });
+  const seen = [];
+  await p.route('**/api/sketch*', async (r) => { seen.push(r.request().headers()['x-gemini-key'] || null); await r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(room) }); });
+  await p.evaluate(() => document.getElementById('btnToggleFile').click());
+  expect(await p.isVisible('#btnSketchKey'), 'the Import & Export menu should have Sketch reader key');
+  await p.click('#btnSketchKey');
+  await p.waitForSelector('#sketchKeyDialog', { state: 'visible' });
+  expect(/No key saved/.test(await p.textContent('#sketchKeyStatus')) && await p.isDisabled('#sketchKeyRemove'), 'it should start with no key');
+  await p.fill('#sketchKeyInput', 'short key'); await p.click('#sketchKeySave');
+  expect(/does not look like a key/.test(await p.textContent('#sketchKeyStatus')) && !(await p.evaluate(() => localStorage.getItem('tilePlanner_sketchKey'))), 'a bad key should be refused');
+  const good = 'AIzaSyTestKey_1234567890abcdefghijklmnopq';
+  await p.fill('#sketchKeyInput', '  ' + good + '  '); await p.click('#sketchKeySave');
+  expect(await p.evaluate(() => localStorage.getItem('tilePlanner_sketchKey')) === good && /Saved on this device/.test(await p.textContent('#sketchKeyStatus')), 'a good key should be saved, trimmed');
+  expect((await p.inputValue('#sketchKeyInput')) === '', 'the key box should be emptied after saving');
+  await p.click('#sketchKeyClose');
+  // it is sent with the sketch, and the sketch dialog says so
+  await p.evaluate(() => document.getElementById('btnSketch').click()); await p.waitForSelector('#sketchDialog', { state: 'visible' });
+  expect(await p.isVisible('#sketchOwnKey'), 'the sketch dialog should say your own key is in use');
+  await p.setInputFiles('#sketchFile', sketchPng); await p.waitForTimeout(400);
+  await p.click('#sketchConvert'); await p.waitForSelector('#sketchLoad', { state: 'visible' });
+  expect(seen.length === 1 && seen[0] === good, 'the key should be sent with the sketch: ' + JSON.stringify(seen));
+  // the design file never has it
+  expect(!(await p.evaluate(() => app.exportDesign())).includes('AIza'), 'the key must not be in a saved design');
+  // Google rejecting it, and its limit, are said plainly
+  await p.unroute('**/api/sketch*');
+  await p.route('**/api/sketch*', (r) => r.fulfill({ status: 400, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ code: 'bad_key' }) }));
+  await p.click('#sketchConvert'); await p.waitForTimeout(500);
+  expect(/did not accept your key/.test(await p.textContent('#sketchStatus')), 'a rejected key should say so: ' + await p.textContent('#sketchStatus'));
+  await p.unroute('**/api/sketch*');
+  await p.route('**/api/sketch*', (r) => r.fulfill({ status: 429, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ code: 'quota' }) }));
+  await p.click('#sketchConvert'); await p.waitForTimeout(500);
+  expect(/Your key has reached its usage limit/.test(await p.textContent('#sketchStatus')), 'a key at its limit should say so: ' + await p.textContent('#sketchStatus'));
+  await p.click('#sketchClose');
+  // remove it: the next sketch goes without a key
+  await p.evaluate(() => document.getElementById('btnSketchKey').click());
+  await p.click('#sketchKeyRemove');
+  expect(await p.evaluate(() => localStorage.getItem('tilePlanner_sketchKey')) === null && /Key removed/.test(await p.textContent('#sketchKeyStatus')), 'the key should be removed');
+  await p.unroute('**/api/sketch*');
+  seen.length = 0;
+  await p.route('**/api/sketch*', async (r) => { seen.push(r.request().headers()['x-gemini-key'] || null); await r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(room) }); });
+  await p.click('#sketchKeyClose');
+  await p.evaluate(() => document.getElementById('btnSketch').click()); await p.waitForSelector('#sketchDialog', { state: 'visible' });
+  expect(!(await p.isVisible('#sketchOwnKey')), 'the own-key note should go');
+  await p.click('#sketchConvert'); await p.waitForSelector('#sketchLoad', { state: 'visible' });
+  expect(seen.length === 1 && seen[0] === null, 'without a key, none should be sent: ' + JSON.stringify(seen));
+  await p.context().close();
+});
+
 await browser.close();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) { console.log('Failed: ' + failures.join('; ')); process.exit(1); }

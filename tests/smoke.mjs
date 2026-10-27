@@ -734,6 +734,80 @@ await step('hexagon: width is across the flats, the height box is worked out and
   await p.context().close();
 });
 
+await step('pinwheel: the grout is worked out from the rectangle and the square, the tiles fit, every piece is accounted for, and a square that does not fit says so', async () => {
+  const K = 10.8;
+  const design = (rot, w, h, sq, bond = 0) => JSON.stringify({ format: 'tile-planner-design', version: '1.1', appState: { unitMode: 'sixtyfourth', snapMode: 'auto', currentTab: 'surfaceDesign', zoom: 1, panX: 40, panY: 40 },
+    tileLayout: { tileWidthInches: w, tileHeightInches: h, tile2WidthInches: sq, groutWidthInches: 0.125, tileDepthInches: 0.5, bondOffset: bond, pattern: 'pinwheel', rotationDegrees: rot, offsetXInches: 1, offsetYInches: 0 },
+    surface: { vertices: [[0, 0], [48, 0], [48, 34], [0, 34], [14, 10], [22, 10], [22, 16], [14, 16]].map(([x, y]) => ({ x: x * K, y: y * K })), lines: [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4]] } });
+  const p = await newPage({ width: 1280, height: 800 });
+  // choosing the pattern starts with the square that fits the rectangle and the grout in use
+  await p.selectOption('#tilePattern', 'pinwheel');
+  const start = await p.evaluate(() => ({ square: app.tile2WidthInches, grout: app.effectiveGrout(), row: document.getElementById('tile2Row').style.display, heightBox: document.getElementById('tile2Height').closest('.input-group').style.display }));
+  expect(start.row !== 'none' && start.heightBox === 'none' && Math.abs(start.square + start.grout - 12) < 1e-6, 'a pinwheel should start with a square that fits (24 x 12 gives 12): ' + JSON.stringify(start));
+  // a fitting pair: 8 x 4 with a 3 51/64 square leaves a 13/64 grout, shown locked and in fractions
+  await p.evaluate((j) => app.importDesign(j), design(0, 8, 4, 3.796875));
+  const ui = await p.evaluate(() => ({ locked: document.getElementById('groutWidth').disabled, grout: parseFloat(document.getElementById('groutWidth').value), hint: document.getElementById('weaveHint').textContent, label: document.getElementById('labelTile2Width').textContent }));
+  expect(ui.locked && Math.abs(ui.grout - 0.203) < 0.001 && /13\/64/.test(ui.hint) && /Square side/.test(ui.label), 'the grout should be worked out and locked: ' + JSON.stringify(ui));
+  // the tiles fit: slots (tile + grout) never overlap and leave no gap
+  const geometry = await p.evaluate(() => {
+    const out = [];
+    for (const bond of [0, 0.5, 0.3333]) {
+    app.bondOffset = bond;
+    const k = CONFIG.PIXELS_PER_INCH, layout = app.getLayout(), g = layout.groutW;
+    const tiles = layout.tilesIn(-300, -300, 1200, 1200).map((t) => ({ x: t.x, y: t.y, x2: t.x + t.w + g, y2: t.y + t.h + g, sq: t.w === t.h }));
+    let overlaps = 0, holes = 0;
+    for (let i = 0; i < tiles.length; i++) for (let j = i + 1; j < tiles.length; j++) {
+      const a = tiles[i], b = tiles[j];
+      if (a.x < b.x2 - 1e-6 && b.x < a.x2 - 1e-6 && a.y < b.y2 - 1e-6 && b.y < a.y2 - 1e-6) overlaps++;
+    }
+    for (let x = 100; x < 900; x += 13.7) for (let y = 100; y < 900; y += 13.3) if (!tiles.some((t) => x >= t.x && x < t.x2 && y >= t.y && y < t.y2)) holes++;
+    out.push({ bond, overlaps, holes, squares: tiles.filter((t) => t.sq).length, rects: tiles.filter((t) => !t.sq).length });
+    }
+    app.bondOffset = 0;
+    return out;
+  });
+  for (const r of geometry) expect(r.overlaps === 0 && r.holes === 0 && r.squares > 5 && r.rects / r.squares > 3.5 && r.rects / r.squares < 5, 'the pinwheel does not fit (row offset ' + r.bond + '): ' + JSON.stringify(r));
+  // every piece is accounted for, for a wide rectangle, a tall one and a turned layout
+  for (const [rot, w, h, sq, bond] of [[0, 8, 4, 3.796875, 0], [30, 4, 6, 1.875, 0], [0, 6, 12, 5.8125, 0], [0, 8, 4, 3.796875, 0.5]]) {
+    await p.evaluate((j) => app.importDesign(j), design(rot, w, h, sq, bond));
+    await p.click('.tab[data-tab="finalize"]'); await p.waitForTimeout(250);
+    const r = await p.evaluate(() => {
+      app.selectedSurfaces = [0]; app.updateTileCount();
+      const area = app.computeSurfaceArea(app.detectedSurfaces[0]);
+      const list = app.computeCutList();
+      const pieceArea = list.groups.reduce((sum, grp) => sum + grp.qty * (Math.abs(ringArea(grp.ring)) - grp.holes.reduce((s, h2) => s + Math.abs(ringArea(h2)), 0)), 0);
+      const full = parseInt([...document.querySelectorAll('#tileCountSummary .count-row')].find((row) => row.textContent.startsWith('Full tiles')).querySelector('.count-value').textContent, 10);
+      const layout = app.getLayout(), ppi = CONFIG.PIXELS_PER_INCH;
+      // the whole tiles are a mix of rectangles and squares: count each kind
+      let fullArea = 0;
+      for (const surfaceIdx of app.selectedSurfaces) {
+        const surface = app.detectedSurfaces[surfaceIdx], rings = app.surfaceRings(layout, surface);
+        const xs = app.getSurfaceOuterBoundary(surface).map((i) => app.vertices[i].x), ys = app.getSurfaceOuterBoundary(surface).map((i) => app.vertices[i].y);
+        for (const tile of layout.tilesCovering(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), layout.reach * 2)) {
+          if (!app.analyzeTileIntersectionWithSurface(tile.corners, surface, layout.tileW, layout.tileH)) { if (rings.outer.length && app.pointInSurface({ x: (tile.corners[0].x + tile.corners[2].x) / 2, y: (tile.corners[0].y + tile.corners[2].y) / 2 }, surface)) fullArea += (tile.w / ppi) * (tile.h / ppi); continue; }
+          const c = app.clipTile(tile, rings);
+          if (c.full) fullArea += (tile.w / ppi) * (tile.h / ppi);
+        }
+      }
+      return { area, covered: fullArea + pieceArea, grout: app.effectiveGrout(), full };
+    });
+    const ratio = r.covered / r.area;
+    expect(ratio > 0.9 && ratio <= 1.0001, `pinwheel tiles and pieces should cover the surface less its grout (${rot} deg, ${w} x ${h}): ` + JSON.stringify(r));
+  }
+  // a square that is too big, and a rectangle that is not one
+  await p.evaluate((j) => app.importDesign(j), design(0, 8, 4, 4.5));
+  const tooBig = await p.evaluate(() => ({ locked: document.getElementById('groutWidth').disabled, hint: document.getElementById('weaveHint').textContent, color: document.getElementById('weaveHint').style.color, layoutPattern: app.getLayout().pattern }));
+  expect(!tooBig.locked && /smaller than/.test(tooBig.hint) && tooBig.color !== '' && tooBig.layoutPattern === 'grid', 'a square that is too big should say so and lay a plain grid: ' + JSON.stringify(tooBig));
+  await p.evaluate((j) => app.importDesign(j), design(0, 6, 6, 2));
+  const notARectangle = await p.evaluate(() => document.getElementById('weaveHint').textContent);
+  expect(/needs a rectangle/.test(notARectangle), 'a square tile should be told a pinwheel needs a rectangle: ' + notARectangle);
+  // save and load
+  await p.evaluate((j) => app.importDesign(j), design(0, 8, 4, 3.796875));
+  const saved = JSON.parse(await p.evaluate(() => app.exportDesign()));
+  expect(saved.tileLayout.pattern === 'pinwheel' && saved.tileLayout.tile2WidthInches === 3.796875, 'pinwheel should be saved: ' + JSON.stringify(saved.tileLayout));
+  await p.context().close();
+});
+
 await browser.close();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) { console.log('Failed: ' + failures.join('; ')); process.exit(1); }

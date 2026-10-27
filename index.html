@@ -1775,6 +1775,7 @@
                         <option value="herringbone">Herringbone</option>
                         <option value="basketweave">Basketweave</option>
                         <option value="hopscotch">Hopscotch (two tile sizes)</option>
+                        <option value="pinwheel">Pinwheel (rectangle and square)</option>
                         <option value="hexagon">Hexagon</option>
                     </select>
                 </div>
@@ -2457,6 +2458,37 @@
                     const ox = a * Wg - b * wg, oy = a * hg + b * Hg;
                     if (touches(ox, oy, Wg, Hg)) tiles.push({ x: ox, y: oy, w: layout.tileW, h: layout.tileH });
                     if (touches(ox + Wg, oy, wg, hg)) tiles.push({ x: ox + Wg, y: oy, w: layout.tile2W, h: layout.tile2H });
+                }
+            }
+            return tiles;
+        }
+    };
+
+    // Pinwheel: four rectangles turned a quarter turn from one another around a small square, repeated on a square grid. The square's side
+    // is the rectangle's length minus its width, so the grout is not a free choice: it is whatever makes them fit (see TileApp.pinwheelFit).
+    // The second tile of the layout is the square.
+    TILE_PATTERNS.pinwheel = {
+        twoTile: true,
+        tilesIn(layout, minX, minY, maxX, maxY) {
+            const long = Math.max(layout.tileW, layout.tileH), short = Math.min(layout.tileW, layout.tileH), g = layout.groutW;
+            const L = long + g, Wd = short + g, C = L + Wd;   // slots: long, short, and a cell that is one of each side by side
+            const wideTurned = layout.tileW < layout.tileH;
+            const sq = layout.tile2W;
+            const tiles = [];
+            const touches = (x, y, w, h) => x < maxX && x + w > minX && y < maxY && y + h > minY;
+            for (let j = Math.floor(minY / C) - 1; j <= Math.ceil(maxY / C) + 1; j++) {
+                // every second row of pinwheels slides sideways by `bond` of a pinwheel's width (0 = stacked)
+                const rowOffset = (((j % 2) + 2) % 2) * layout.bond * C;
+                for (let i = Math.floor((minX - rowOffset) / C) - 1; i <= Math.ceil((maxX - rowOffset) / C) + 1; i++) {
+                    const x = i * C + rowOffset, y = j * C;
+                    const cell = [
+                        { x, y, w: long, h: short, swap: wideTurned, slotW: L, slotH: Wd },
+                        { x: x + L, y, w: short, h: long, swap: !wideTurned, slotW: Wd, slotH: L },
+                        { x: x + Wd, y: y + L, w: long, h: short, swap: wideTurned, slotW: L, slotH: Wd },
+                        { x, y: y + Wd, w: short, h: long, swap: !wideTurned, slotW: Wd, slotH: L },
+                        { x: x + Wd, y: y + Wd, w: sq, h: sq, slotW: L - Wd, slotH: L - Wd }
+                    ];
+                    for (const t of cell) if (touches(t.x, t.y, t.slotW, t.slotH)) { delete t.slotW; delete t.slotH; tiles.push(t); }
                 }
             }
             return tiles;
@@ -3198,6 +3230,12 @@
             document.getElementById('bondOffset').addEventListener('input', () => this.updateBondOffset());
             document.getElementById('tilePattern').addEventListener('change', (e) => {
                 this.pattern = e.target.value;
+                if (this.pattern === 'pinwheel') {
+                    // start with the square that fits the rectangle and the grout in use
+                    const gap = Math.abs(this.tileWidthInches - this.tileHeightInches) - this.groutWidthInches;
+                    if (gap > 0) this.tile2WidthInches = gap;
+                    this.updateTileInputFields();
+                }
                 this.updatePatternControls();
                 if (this.currentTab === 'finalize') this.updateTileCount();
                 this.redraw();
@@ -4220,7 +4258,9 @@
                 
                 // Volume of grout joints in cubic inches
                 // joint length per tile area; with two sizes, the two tiles of one repeat together
-                const jointPerArea = this.pattern === 'hexagon'
+                const jointPerArea = this.pattern === 'pinwheel' && this.pinwheelFit().ok
+                    ? (4 * (tileW + tileH) + 2 * this.tile2WidthInches) / (4 * tileW * tileH + this.tile2WidthInches * this.tile2WidthInches)   // four rectangles and a square per repeat
+                    : this.pattern === 'hexagon'
                     ? 2 / tileW                                  // three joints of one side each per hexagon: (sqrt 3 x width) / ((sqrt 3 / 2) x width squared)
                     : this.pattern === 'hopscotch'
                     ? (tileW + tileH + this.tile2WidthInches + this.tile2HeightInches) / (tileW * tileH + this.tile2WidthInches * this.tile2HeightInches)
@@ -4480,11 +4520,24 @@
             return { ok: true, n, grout: Math.max(0, (long - n * short) / (n - 1)) };
         }
 
-        // The grout width in use: the one typed in, except that a basketweave works it out from the tile.
+        // A pinwheel's square (the second tile) has a side of the rectangle's length - its width - the grout, so the grout is worked out
+        // from the three sizes: grout = length - width - square.
+        pinwheelFit() {
+            const long = Math.max(this.tileWidthInches, this.tileHeightInches), short = Math.min(this.tileWidthInches, this.tileHeightInches);
+            const square = this.tile2WidthInches;
+            const grout = long - short - square;
+            return { ok: long > short + 1e-6 && square > 0 && grout >= -1e-9, grout: Math.max(0, grout), long, short, square };
+        }
+
+        // The grout width in use: the one typed in, except that a basketweave or a pinwheel works it out from the tiles.
         effectiveGrout() {
             if (this.pattern === 'basketweave') {
                 const w = this.weaveGrout();
                 if (w.ok) return w.grout;
+            }
+            if (this.pattern === 'pinwheel') {
+                const f = this.pinwheelFit();
+                if (f.ok) return f.grout;
             }
             return this.groutWidthInches;
         }
@@ -4494,7 +4547,12 @@
         updatePatternControls() {
             const weaving = this.pattern === 'basketweave';
             document.getElementById('labelBond').textContent = weaving ? 'Tiles per block:' : this.pattern === 'stepped' ? 'Step:' : 'Running Bond:';
-            document.getElementById('bondGroup').style.visibility = this.pattern === 'herringbone' || this.pattern === 'hopscotch' || this.pattern === 'hexagon' ? 'hidden' : 'visible';
+            document.getElementById('bondGroup').style.visibility = ['herringbone', 'hopscotch', 'hexagon'].includes(this.pattern) ? 'hidden' : 'visible';
+            // a pinwheel's second tile is a square: one side to type, and the grout is worked out
+            const pinwheel = this.pattern === 'pinwheel';
+            const unitSuffix = this.unitMode === 'metric' ? ' (mm):' : this.unitMode === 'metricCm' ? ' (cm):' : ' (in):';
+            document.getElementById('labelTile2Width').textContent = (pinwheel ? 'Square side' : 'Second tile width') + unitSuffix;
+            document.getElementById('tile2Height').closest('.input-group').style.display = pinwheel ? 'none' : '';
             // a hexagon is set by its width across the flats; the height box shows the corner-to-corner height and cannot be typed in
             const hexagon = this.pattern === 'hexagon';
             document.getElementById('tileHeight').disabled = hexagon;
@@ -4508,11 +4566,25 @@
             const hint = document.getElementById('weaveHint');
             const format = (inches) => fieldLength(inches, this.unitMode);
             const fit = weaving ? this.weaveGrout() : null;
-            const locked = weaving && fit.ok;
+            const pinFit = pinwheel ? this.pinwheelFit() : null;
+            const locked = (weaving && fit.ok) || (pinwheel && pinFit.ok);
             groutInput.disabled = locked;
             groutButton.disabled = locked;
-            groutInput.value = format(locked ? fit.grout : this.groutWidthInches);
+            groutInput.value = format(weaving && fit.ok ? fit.grout : pinwheel && pinFit.ok ? pinFit.grout : this.groutWidthInches);
             hint.className = 'hint-text';
+            if (pinwheel) {
+                hint.style.display = '';
+                if (pinFit.ok) {
+                    hint.style.color = '';
+                    hint.textContent = 'Grout works out to ' + formatMeasurement(pinFit.grout, this.unitMode) + ' so the square and rectangles fit.';
+                } else {
+                    hint.style.color = '#BF616A';
+                    hint.textContent = pinFit.long <= pinFit.short + 1e-6
+                        ? 'A pinwheel needs a rectangle: the width and height must differ.'
+                        : 'The square must be smaller than the rectangle\'s length minus its width (' + formatMeasurement(pinFit.long - pinFit.short, this.unitMode) + ').';
+                }
+                return;
+            }
             if (hexagon) {
                 hint.style.color = '';
                 hint.textContent = 'Width is across the flats. The height is worked out, corner to corner.';
@@ -5285,7 +5357,7 @@
             const settings = [
                 this.pattern === 'hexagon' ? `Hexagon ${fm(tileWIn)} across the flats` : layout.twoTile ? `Tiles ${fm(tileWIn)} × ${fm(tileHIn)} and ${fm(layout.tile2W / ppi)} × ${fm(layout.tile2H / ppi)}` : `Tile ${fm(tileWIn)} × ${fm(tileHIn)}`,
                 `Grout ${fm(layout.groutW / ppi)}`,
-                this.pattern === 'hopscotch' ? 'Hopscotch' : this.pattern === 'hexagon' ? 'Rows pointing up' : this.pattern === 'herringbone' ? 'Herringbone' : this.pattern === 'basketweave' ? `Basketweave, ${this.weaveCount()} per block` : this.pattern === 'stepped' ? `Stepped offset ${this.bondOffset}` : (this.bondOffset > 0 ? `Running bond offset ${this.bondOffset}` : 'Stacked rows'),
+                this.pattern === 'pinwheel' ? (this.bondOffset > 0 ? `Pinwheel, rows offset ${this.bondOffset}` : 'Pinwheel') : this.pattern === 'hopscotch' ? 'Hopscotch' : this.pattern === 'hexagon' ? 'Rows pointing up' : this.pattern === 'herringbone' ? 'Herringbone' : this.pattern === 'basketweave' ? `Basketweave, ${this.weaveCount()} per block` : this.pattern === 'stepped' ? `Stepped offset ${this.bondOffset}` : (this.bondOffset > 0 ? `Running bond offset ${this.bondOffset}` : 'Stacked rows'),
                 ...(this.rotationDegrees ? [`Rotated ${this.rotationDegrees}°`] : [])
             ].join('    ');
             c.fillStyle = MUTED; c.font = '30px sans-serif';
@@ -6486,11 +6558,12 @@
         // A hexagon is set by its width across the flats; its height (corner to corner) follows.
         hexagonHeightInches() { return this.tileWidthInches * 2 / Math.sqrt(3); }
 
+        // (a pinwheel whose sizes do not fit is laid as a plain grid)
         getLayout() {
             return new TileLayout({
                 tileW: this.tileWidthInches * CONFIG.PIXELS_PER_INCH, tileH: (this.pattern === 'hexagon' ? this.hexagonHeightInches() : this.tileHeightInches) * CONFIG.PIXELS_PER_INCH,
-                tile2W: this.tile2WidthInches * CONFIG.PIXELS_PER_INCH, tile2H: this.tile2HeightInches * CONFIG.PIXELS_PER_INCH,
-                pattern: this.pattern, groutW: this.effectiveGrout() * CONFIG.PIXELS_PER_INCH, bond: this.bondOffset, weave: this.weaveCount(),
+                tile2W: this.tile2WidthInches * CONFIG.PIXELS_PER_INCH, tile2H: (this.pattern === 'pinwheel' ? this.tile2WidthInches : this.tile2HeightInches) * CONFIG.PIXELS_PER_INCH,
+                pattern: this.pattern === 'pinwheel' && !this.pinwheelFit().ok ? 'grid' : this.pattern, groutW: this.effectiveGrout() * CONFIG.PIXELS_PER_INCH, bond: this.bondOffset, weave: this.weaveCount(),
                 rotationRad: (this.rotationDegrees * Math.PI) / 180,
                 offsetX: this.offsetXInches * CONFIG.PIXELS_PER_INCH, offsetY: this.offsetYInches * CONFIG.PIXELS_PER_INCH
             });

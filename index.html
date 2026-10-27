@@ -2227,13 +2227,15 @@
         line: CONFIG.COLORS.LINE_DEFAULT,
         wallLabel: CONFIG.COLORS.LABEL,
         cutLabel: '#cc0000',
-        angle: '#8b6914'
+        angle: '#8b6914',
+        distance: '#b8860b'
     };
     const DISPLAY_COLOR_NAMES = [
         ['line', 'Surface lines'],
         ['wallLabel', 'Wall length labels'],
         ['cutLabel', 'Cut measurements'],
-        ['angle', 'Angles']
+        ['angle', 'Angles'],
+        ['distance', 'Distance tool']
     ];
 
     // ============================================================
@@ -3146,9 +3148,12 @@
                 this.redraw();
             });
             
-            // Distance tool
+            // Distance tool: it follows the pointer, so it needs a mouse. A screen that cannot hover (a phone or tablet) does not get it.
+            this.canHover = window.matchMedia ? window.matchMedia('(hover: hover)').matches : !this.isMobile;
+            document.getElementById('distanceTool').closest('.checkbox-group').style.display = this.canHover ? '' : 'none';
+            if (!this.canHover) this.distanceToolEnabled = false;
             document.getElementById('distanceTool').addEventListener('change', (e) => {
-                this.distanceToolEnabled = e.target.checked;
+                this.distanceToolEnabled = e.target.checked && this.canHover;
                 this.redraw();
             });
             
@@ -4754,7 +4759,7 @@
                     const as = data.appState;
                     if (typeof as.unitMode === 'string') this.unitMode = as.unitMode;
                     if (typeof as.snapMode === 'string') this.snapMode = as.snapMode;
-                    if (typeof as.distanceToolEnabled === 'boolean') this.distanceToolEnabled = as.distanceToolEnabled;
+                    if (typeof as.distanceToolEnabled === 'boolean') this.distanceToolEnabled = as.distanceToolEnabled && this.canHover;
                     if (typeof as.zoom === 'number' && as.zoom > 0) this.zoom = as.zoom;
                     if (typeof as.panX === 'number') this.panX = as.panX;
                     if (typeof as.panY === 'number') this.panY = as.panY;
@@ -7281,8 +7286,8 @@
             if (this.currentTab === 'finalize') return;
             if (!this.distanceToolEnabled || !this.mousePos || this.lines.length === 0) return;
             const ctx = this.ctx;
-            ctx.strokeStyle = CONFIG.COLORS.DISTANCE_TOOL;
-            ctx.lineWidth = 1 / this.zoom;
+            ctx.strokeStyle = this.displayColors.distance;
+            ctx.lineWidth = 1.5 / this.zoom;
             ctx.setLineDash([5 / this.zoom, 3 / this.zoom]);
             
             const xResult = this.findNearestLineInDirection(this.mousePos, 'x');
@@ -7290,11 +7295,11 @@
             
             if (xResult) {
                 ctx.beginPath(); ctx.moveTo(this.mousePos.x, this.mousePos.y); ctx.lineTo(xResult.point.x, this.mousePos.y); ctx.stroke();
-                this.drawLabel(`X: ${formatMeasurement(xResult.distance / CONFIG.PIXELS_PER_INCH, this.unitMode)}`, (this.mousePos.x + xResult.point.x) / 2, this.mousePos.y, CONFIG.COLORS.DISTANCE_TOOL);
+                this.drawLabel(`X: ${formatMeasurement(xResult.distance / CONFIG.PIXELS_PER_INCH, this.unitMode)}`, (this.mousePos.x + xResult.point.x) / 2, this.mousePos.y, this.displayColors.distance);
             }
             if (yResult) {
                 ctx.beginPath(); ctx.moveTo(this.mousePos.x, this.mousePos.y); ctx.lineTo(this.mousePos.x, yResult.point.y); ctx.stroke();
-                this.drawLabel(`Y: ${formatMeasurement(yResult.distance / CONFIG.PIXELS_PER_INCH, this.unitMode)}`, this.mousePos.x, (this.mousePos.y + yResult.point.y) / 2, CONFIG.COLORS.DISTANCE_TOOL, 5, 0);
+                this.drawLabel(`Y: ${formatMeasurement(yResult.distance / CONFIG.PIXELS_PER_INCH, this.unitMode)}`, this.mousePos.x, (this.mousePos.y + yResult.point.y) / 2, this.displayColors.distance, 5, 0);
             }
             ctx.setLineDash([]);
         }

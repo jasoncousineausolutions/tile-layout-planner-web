@@ -828,6 +828,48 @@ await step('typing in the tile height and grout boxes is never overwritten, in e
   await p.context().close();
 });
 
+await step('distance tool: shown where there is a mouse, hidden on a touch screen, and its colour is a Display Options setting', async () => {
+  const p = await newPage({ width: 1280, height: 800 });
+  await p.click('.tab[data-tab="surfaceDesign"]');
+  expect(await p.isVisible('#distanceTool'), 'the distance tool should show with a mouse');
+  await p.evaluate(() => {
+    window.__strokes = new Set();
+    const d = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'strokeStyle');
+    Object.defineProperty(CanvasRenderingContext2D.prototype, 'strokeStyle', { set(v) { window.__strokes.add(String(v).toLowerCase()); d.set.call(this, v); }, get() { return d.get.call(this); } });
+  });
+  await drawRectangle(p);
+  const draws = async () => p.evaluate(() => {
+    window.__strokes.clear();
+    app.distanceToolEnabled = true;
+    const a = app.vertices[0], b = app.vertices[2];
+    app.mousePos = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    app.redraw();
+    return [...window.__strokes];
+  });
+  const first = await draws();
+  expect(first.includes('#b8860b'), 'the distance tool should draw in its default colour, a dark gold: ' + JSON.stringify(first));
+  await p.evaluate(() => { app.displayColors.distance = '#112233'; });
+  const second = await draws();
+  expect(second.includes('#112233') && !second.includes('#b8860b'), 'the distance tool should use the colour chosen in Display Options: ' + JSON.stringify(second));
+  const names = await p.evaluate(() => [...document.querySelectorAll('#displayCollapsible input[type="color"]')].map((i) => i.dataset.key));
+  expect(names.includes('distance'), 'Display Options should have a Distance tool colour: ' + JSON.stringify(names));
+  await p.context().close();
+  // a touch screen cannot hover: no distance tool, and a design saved with it on loads with it off
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 780 }, hasTouch: true, isMobile: true });
+  const t = await ctx.newPage();
+  await t.goto(url); await t.waitForTimeout(300);
+  await t.click('.tab[data-tab="surfaceDesign"]');
+  expect(!(await t.isVisible('#distanceTool')), 'the distance tool should be hidden on a touch screen');
+  const loaded = await t.evaluate(() => {
+    const k = 10.8;
+    app.importDesign(JSON.stringify({ format: 'tile-planner-design', version: '1.1', appState: { unitMode: 'decimal2', snapMode: 'auto', distanceToolEnabled: true, currentTab: 'surfaceDesign', zoom: 1, panX: 0, panY: 0 },
+      tileLayout: { tileWidthInches: 12, tileHeightInches: 12, groutWidthInches: 0, pattern: 'grid' }, surface: { vertices: [[0, 0], [60, 0], [60, 40], [0, 40]].map(([x, y]) => ({ x: x * k, y: y * k })), lines: [[0, 1], [1, 2], [2, 3], [3, 0]] } }));
+    return app.distanceToolEnabled;
+  });
+  expect(loaded === false, 'a design saved with the distance tool on should open with it off on a touch screen');
+  await ctx.close();
+});
+
 await browser.close();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) { console.log('Failed: ' + failures.join('; ')); process.exit(1); }

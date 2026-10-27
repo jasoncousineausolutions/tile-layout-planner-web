@@ -870,9 +870,24 @@ await step('distance tool: shown where there is a mouse, hidden on a touch scree
   await ctx.close();
 });
 
-await step('sketch reader key: saved only on the device, checked, sent with each sketch, removable, and never put in a design', async () => {
+await step('sketch reader key: switched off, so nothing about it shows and no key is ever sent', async () => {
   const p = await newPage({ width: 1280, height: 800 });
-  await p.evaluate(() => { try { localStorage.removeItem('tilePlanner_sketchKey'); } catch (e) { /* ignore */ } });
+  await p.evaluate(() => { localStorage.setItem('tilePlanner_sketchKey', 'AIzaSyTestKey_1234567890abcdefghijklmnopq'); });
+  const seen = [];
+  await p.route('**/api/sketch*', async (r) => { seen.push(r.request().headers()['x-gemini-key'] || null); await r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(room) }); });
+  await p.evaluate(() => document.getElementById('btnToggleFile').click());
+  expect(!(await p.isVisible('#btnSketchKey')), 'the Sketch reader key menu item should be hidden while the feature is off');
+  await p.evaluate(() => document.getElementById('btnSketch').click()); await p.waitForSelector('#sketchDialog', { state: 'visible' });
+  expect(!(await p.isVisible('#sketchOwnKey')), 'the own-key note should not show');
+  await p.setInputFiles('#sketchFile', sketchPng); await p.waitForTimeout(400);
+  await p.click('#sketchConvert'); await p.waitForSelector('#sketchLoad', { state: 'visible' });
+  expect(seen.length === 1 && seen[0] === null, 'no key should be sent while the feature is off, even if one was saved: ' + JSON.stringify(seen));
+  await p.context().close();
+});
+
+await step('sketch reader key (when switched on): saved only on the device, checked, sent with each sketch, removable, and never put in a design', async () => {
+  const p = await newPage({ width: 1280, height: 800 });
+  await p.evaluate(() => { CONFIG.SKETCH_OWN_KEY = true; app.updateSketchKeyMenu(); try { localStorage.removeItem('tilePlanner_sketchKey'); } catch (e) { /* ignore */ } });
   const seen = [];
   await p.route('**/api/sketch*', async (r) => { seen.push(r.request().headers()['x-gemini-key'] || null); await r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(room) }); });
   await p.evaluate(() => document.getElementById('btnToggleFile').click());

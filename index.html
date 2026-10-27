@@ -2159,6 +2159,9 @@
         // Display
         PIXELS_PER_INCH: 10.8,
         SKETCH_API_URL: 'https://www.jasoncousineau.com/api/sketch',
+        // Letting a person save their own Gemini key (Import & Export > Sketch reader key) is built but switched off. Turning it on needs the
+        // sketch server's X-Gemini-Key support (branch byo-key of the website repo) and the matching privacy policy text.
+        SKETCH_OWN_KEY: false,
         SKETCH_IMAGE_MAX_PX: 1600,
         HANDLE_SIZE: 6,
         
@@ -3307,6 +3310,7 @@
             document.getElementById('btnSaveLoadMobile').addEventListener('click', () => this.openSaveLoadDialog());
             document.getElementById('btnSketch').addEventListener('click', () => this.openSketchDialog());
             document.getElementById('btnSketchMobile').addEventListener('click', () => this.openSketchDialog());
+            this.updateSketchKeyMenu();
             document.getElementById('btnSketchKey').addEventListener('click', () => this.openSketchKeyDialog());
             document.getElementById('btnSketchKeyMobile').addEventListener('click', () => this.openSketchKeyDialog());
             document.getElementById('sketchKeySave').addEventListener('click', () => this.saveSketchKey());
@@ -4858,10 +4862,16 @@
 
         // The sketch reader key the person has saved on this device (never in a design file), or '' if none.
         getSketchKey() {
+            if (!CONFIG.SKETCH_OWN_KEY) return '';
             try {
                 const key = localStorage.getItem('tilePlanner_sketchKey') || '';
                 return /^[A-Za-z0-9_-]{20,100}$/.test(key) ? key : '';
             } catch (err) { return ''; }
+        }
+
+        // The menu items for the key are only there while the feature is switched on.
+        updateSketchKeyMenu() {
+            for (const id of ['btnSketchKey', 'btnSketchKeyMobile']) document.getElementById(id).style.display = CONFIG.SKETCH_OWN_KEY ? '' : 'none';
         }
 
         showSketchKeyState(message, kind) {

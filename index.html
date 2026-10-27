@@ -1775,6 +1775,7 @@
                         <option value="herringbone">Herringbone</option>
                         <option value="basketweave">Basketweave</option>
                         <option value="hopscotch">Hopscotch (two tile sizes)</option>
+                        <option value="hexagon">Hexagon</option>
                     </select>
                 </div>
                 <p class="hint-text" id="weaveHint" style="display: none;"></p>
@@ -2244,6 +2245,16 @@
     const SLIVER_LIMIT_IN = 2.5 / 2.54;   // a cut edge shorter than 2.5 cm is a sliver, awkward to cut and to fix
     const CUT_MIN_AREA_SQIN = 0.01;        // anything smaller is a tile edge touching a wall, not a cut
 
+    // Whether a point is inside a polygon of { x, y } corners.
+    function pointInPolygon(pt, polygon) {
+        let inside = false;
+        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+            const a = polygon[i], b = polygon[j];
+            if ((a.y > pt.y) !== (b.y > pt.y) && pt.x < (b.x - a.x) * (pt.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+        }
+        return inside;
+    }
+
     function ringArea(ring) {
         let a = 0;
         for (let i = 0; i < ring.length; i++) {
@@ -2452,6 +2463,30 @@
         }
     };
 
+    // Hexagon: regular hexagons with a point up, `tileW` across the flats. Rows sit half a tile apart and each is 3/4 of a point-to-point
+    // height below the one above, so every tile touches six neighbours across a joint one grout wide. These tiles are not rectangles:
+    // each carries `poly` (its six corners, in layout pixels), `slot` (the hexagon one joint wider, for the grout) and `areaPx`.
+    TILE_PATTERNS.hexagon = {
+        polygonTiles: true,
+        tilesIn(layout, minX, minY, maxX, maxY) {
+            const F = layout.tileW, g = layout.groutW;
+            const R = F / Math.sqrt(3), Rs = (F + g) / Math.sqrt(3);
+            const pitchX = F + g, pitchY = pitchX * Math.sqrt(3) / 2;
+            const around = (cx, cy, r) => [0, 1, 2, 3, 4, 5].map(k => ({ x: cx + r * Math.cos(Math.PI / 6 + k * Math.PI / 3), y: cy + r * Math.sin(Math.PI / 6 + k * Math.PI / 3) }));
+            const tiles = [];
+            for (let row = Math.floor(minY / pitchY) - 2; row <= Math.ceil(maxY / pitchY) + 2; row++) {
+                const shift = (((row % 2) + 2) % 2) * pitchX / 2;
+                const cy = row * pitchY;
+                for (let col = Math.floor((minX - shift) / pitchX) - 2; col <= Math.ceil((maxX - shift) / pitchX) + 2; col++) {
+                    const cx = col * pitchX + shift;
+                    if (cx - Rs > maxX || cx + Rs < minX || cy - Rs > maxY || cy + Rs < minY) continue;
+                    tiles.push({ x: cx - F / 2, y: cy - R, w: F, h: 2 * R, poly: around(cx, cy, R), slot: around(cx, cy, Rs), areaPx: (Math.sqrt(3) / 2) * F * F });
+                }
+            }
+            return tiles;
+        }
+    };
+
     // Everything that decides where tiles sit. Sizes are in world pixels. The tile count, the cut measurements and the
     // grid drawing all take their tiles from here.
     class TileLayout {
@@ -2498,7 +2533,8 @@
         tilesIn(minX, minY, maxX, maxY) {
             return TILE_PATTERNS[this.pattern].tilesIn(this, minX, minY, maxX, maxY).map(t => ({
                 ...t,
-                corners: [this.toWorld(t.x, t.y), this.toWorld(t.x + t.w, t.y), this.toWorld(t.x + t.w, t.y + t.h), this.toWorld(t.x, t.y + t.h)]
+                corners: t.poly ? t.poly.map(c => this.toWorld(c.x, c.y))
+                    : [this.toWorld(t.x, t.y), this.toWorld(t.x + t.w, t.y), this.toWorld(t.x + t.w, t.y + t.h), this.toWorld(t.x, t.y + t.h)]
             }));
         }
 
@@ -4040,11 +4076,12 @@
                 const rings = this.surfaceRings(layout, surface);
                 for (const tile of layout.tilesCovering(minX, minY, maxX, maxY, layout.reach * 2)) {
                     const tileCorners = tile.corners;
+                    const sides = tileCorners.length;   // 4 for a rectangle, 6 for a hexagon
                     
                     let cornersInside = 0;
                     for (const corner of tileCorners) if (this.pointInSurface(corner, surface)) cornersInside++;
                     
-                    if (cornersInside === 4) {
+                    if (cornersInside === sides) {
                         if (!this.boundaryTouchesTile(tileCorners, surface, layout.tileW, layout.tileH)) { fullTiles++; continue; }
                         // an island smaller than the tile (or a notch in a wall) cuts into it: a whole tile, but one with no off-cut to pair
                         const whole = this.clipTile(tile, rings);
@@ -4058,8 +4095,8 @@
                         if (surface.holes) for (const hole of surface.holes) boundaries.push(hole.map(i => this.vertices[i]));
                         for (const poly of boundaries) {
                             for (let pi = 0; pi < poly.length && !hasIntersection; pi++) {
-                                for (let tj = 0; tj < 4; tj++) {
-                                    if (lineSegmentIntersection(poly[pi], poly[(pi+1) % poly.length], tileCorners[tj], tileCorners[(tj+1) % 4])) {
+                                for (let tj = 0; tj < sides; tj++) {
+                                    if (lineSegmentIntersection(poly[pi], poly[(pi+1) % poly.length], tileCorners[tj], tileCorners[(tj+1) % sides])) {
                                         hasIntersection = true; break;
                                     }
                                 }
@@ -4074,6 +4111,9 @@
                         if (clipped.area < CUT_MIN_AREA_SQIN) continue;
                         if (clipped.full) { fullTiles++; continue; }
                     }
+                    
+                    // A cut hexagon has no width or height cut to pair with another, so each one is a tile of its own
+                    if (tile.poly) { diagonalCuts++; continue; }
                     
                     // Partial tile — analyze the cut type
                     const { widthCuts, heightCuts } = kindOf(tile);
@@ -4180,7 +4220,9 @@
                 
                 // Volume of grout joints in cubic inches
                 // joint length per tile area; with two sizes, the two tiles of one repeat together
-                const jointPerArea = this.pattern === 'hopscotch'
+                const jointPerArea = this.pattern === 'hexagon'
+                    ? 2 / tileW                                  // three joints of one side each per hexagon: (sqrt 3 x width) / ((sqrt 3 / 2) x width squared)
+                    : this.pattern === 'hopscotch'
                     ? (tileW + tileH + this.tile2WidthInches + this.tile2HeightInches) / (tileW * tileH + this.tile2WidthInches * this.tile2HeightInches)
                     : (tileW + tileH) / (tileW * tileH);
                 const groutVolCuIn = jointPerArea * jointW * tileDepth * totalAreaSqIn;
@@ -4402,7 +4444,7 @@
                 offY = getValue('offsetY');
             }
             if (!isNaN(tileW) && tileW > 0) this.tileWidthInches = tileW;
-            if (!isNaN(tileH) && tileH > 0) this.tileHeightInches = tileH;
+            if (!isNaN(tileH) && tileH > 0 && this.pattern !== 'hexagon') this.tileHeightInches = tileH;   // a hexagon's box shows a worked-out height
             if (!isNaN(tile2W) && tile2W > 0) this.tile2WidthInches = tile2W;
             if (!isNaN(tile2H) && tile2H > 0) this.tile2HeightInches = tile2H;
             if (!isNaN(groutW) && groutW >= 0 && !document.getElementById('groutWidth').disabled) this.groutWidthInches = groutW;
@@ -4452,7 +4494,11 @@
         updatePatternControls() {
             const weaving = this.pattern === 'basketweave';
             document.getElementById('labelBond').textContent = weaving ? 'Tiles per block:' : this.pattern === 'stepped' ? 'Step:' : 'Running Bond:';
-            document.getElementById('bondGroup').style.visibility = this.pattern === 'herringbone' || this.pattern === 'hopscotch' ? 'hidden' : 'visible';
+            document.getElementById('bondGroup').style.visibility = this.pattern === 'herringbone' || this.pattern === 'hopscotch' || this.pattern === 'hexagon' ? 'hidden' : 'visible';
+            // a hexagon is set by its width across the flats; the height box shows the corner-to-corner height and cannot be typed in
+            const hexagon = this.pattern === 'hexagon';
+            document.getElementById('tileHeight').disabled = hexagon;
+            document.getElementById('tileHeight').value = fieldLength(hexagon ? this.hexagonHeightInches() : this.tileHeightInches, this.unitMode);
             document.getElementById('tile2Row').style.display = TILE_PATTERNS[this.pattern].twoTile ? '' : 'none';
             document.getElementById('bondCombo').style.display = weaving ? 'none' : '';
             const readout = document.getElementById('weaveReadout');
@@ -4467,6 +4513,12 @@
             groutButton.disabled = locked;
             groutInput.value = format(locked ? fit.grout : this.groutWidthInches);
             hint.className = 'hint-text';
+            if (hexagon) {
+                hint.style.color = '';
+                hint.textContent = 'Width is across the flats. The height is worked out, corner to corner.';
+                hint.style.display = '';
+                return;
+            }
             if (!weaving) { hint.style.display = 'none'; return; }
             hint.style.display = '';
             if (!fit.ok) {
@@ -5130,12 +5182,20 @@
         clipTile(tile, rings) {
             const ppi = CONFIG.PIXELS_PER_INCH;
             const x0 = tile.x / ppi, y0 = tile.y / ppi, x1 = (tile.x + tile.w) / ppi, y1 = (tile.y + tile.h) / ppi;
+            const shape = tile.poly ? tile.poly.map(c => [c.x / ppi, c.y / ppi]) : [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
             let result;
             try {
-                result = polygonClipping.intersection([[[x0, y0], [x1, y0], [x1, y1], [x0, y1]]], [rings.outer]);
+                result = polygonClipping.intersection([shape], [rings.outer]);
                 for (const hole of rings.holes) { if (!result.length) break; result = polygonClipping.difference(result, [hole]); }
             } catch (e) { return { pieces: [], area: 0, full: false, failed: true }; }
-            const onSide = (a, b) => [[a.x, b.x, x0], [a.x, b.x, x1], [a.y, b.y, y0], [a.y, b.y, y1]].some(([u, v, side]) => Math.abs(u - side) < 0.02 && Math.abs(v - side) < 0.02);
+            const nearSegment = (pt, p, q) => {
+                const dx = q[0] - p[0], dy = q[1] - p[1], len2 = dx * dx + dy * dy;
+                const t = Math.max(0, Math.min(1, ((pt.x - p[0]) * dx + (pt.y - p[1]) * dy) / len2));
+                return Math.hypot(pt.x - (p[0] + t * dx), pt.y - (p[1] + t * dy)) < 0.02;
+            };
+            const onSide = tile.poly
+                ? (a, b) => shape.some((p, i) => nearSegment(a, p, shape[(i + 1) % shape.length]) && nearSegment(b, p, shape[(i + 1) % shape.length]))
+                : (a, b) => [[a.x, b.x, x0], [a.x, b.x, x1], [a.y, b.y, y0], [a.y, b.y, y1]].some(([u, v, side]) => Math.abs(u - side) < 0.02 && Math.abs(v - side) < 0.02);
             const pieces = [];
             let total = 0;
             for (const polygon of result) {
@@ -5149,7 +5209,8 @@
                 pieces.push({ ring, cutouts, area });
                 total += area;
             }
-            const full = pieces.length === 1 && !pieces[0].cutouts.length && total >= (tile.w / ppi) * (tile.h / ppi) - CUT_MIN_AREA_SQIN;
+            const tileArea = tile.poly ? tile.areaPx / (ppi * ppi) : (tile.w / ppi) * (tile.h / ppi);
+            const full = pieces.length === 1 && !pieces[0].cutouts.length && total >= tileArea - CUT_MIN_AREA_SQIN;
             return { pieces, area: total, full, failed: false };
         }
 
@@ -5222,9 +5283,9 @@
             c.fillStyle = INK; c.font = 'bold 60px sans-serif';
             c.fillText('Tile and Cut List', M, y + 50); y += 90;
             const settings = [
-                layout.twoTile ? `Tiles ${fm(tileWIn)} × ${fm(tileHIn)} and ${fm(layout.tile2W / ppi)} × ${fm(layout.tile2H / ppi)}` : `Tile ${fm(tileWIn)} × ${fm(tileHIn)}`,
+                this.pattern === 'hexagon' ? `Hexagon ${fm(tileWIn)} across the flats` : layout.twoTile ? `Tiles ${fm(tileWIn)} × ${fm(tileHIn)} and ${fm(layout.tile2W / ppi)} × ${fm(layout.tile2H / ppi)}` : `Tile ${fm(tileWIn)} × ${fm(tileHIn)}`,
                 `Grout ${fm(layout.groutW / ppi)}`,
-                this.pattern === 'hopscotch' ? 'Hopscotch' : this.pattern === 'herringbone' ? 'Herringbone' : this.pattern === 'basketweave' ? `Basketweave, ${this.weaveCount()} per block` : this.pattern === 'stepped' ? `Stepped offset ${this.bondOffset}` : (this.bondOffset > 0 ? `Running bond offset ${this.bondOffset}` : 'Stacked rows'),
+                this.pattern === 'hopscotch' ? 'Hopscotch' : this.pattern === 'hexagon' ? 'Rows pointing up' : this.pattern === 'herringbone' ? 'Herringbone' : this.pattern === 'basketweave' ? `Basketweave, ${this.weaveCount()} per block` : this.pattern === 'stepped' ? `Stepped offset ${this.bondOffset}` : (this.bondOffset > 0 ? `Running bond offset ${this.bondOffset}` : 'Stacked rows'),
                 ...(this.rotationDegrees ? [`Rotated ${this.rotationDegrees}°`] : [])
             ].join('    ');
             c.fillStyle = MUTED; c.font = '30px sans-serif';
@@ -6324,22 +6385,110 @@
                     tileInfo.w = tile.w; tileInfo.h = tile.h; tileInfo.clip = clipped; partialTiles.push(tileInfo);
                 }
             }
+            const rectTiles = partialTiles.filter(t => !t.poly), polyTiles = partialTiles.filter(t => t.poly);
             if (this.showCutMeasurements) {
-                this.drawPartialTileLabels(partialTiles, tileW, tileH);
-                this.drawBoundaryCutLabels(surface, partialTiles, tileW, tileH, effectiveTileW, effectiveTileH, offsetX, offsetY, rotationRad);
+                this.drawPartialTileLabels(rectTiles, tileW, tileH);
+                this.drawBoundaryCutLabels(surface, rectTiles, tileW, tileH, effectiveTileW, effectiveTileH, offsetX, offsetY, rotationRad);
+                this.drawPolygonCutLabels(layout, polyTiles);
             }
             if (this.showAngles) {
-                this.drawCutAngles(surface, partialTiles, rotationRad);
+                this.drawCutAngles(surface, rectTiles, rotationRad);
+                this.drawPolygonCutAngles(layout, polyTiles);
             }
             if (this.highlightSlivers) this.drawSlivers(layout, partialTiles);
+        }
+
+        // Cut measurements for tiles that are not rectangles (hexagons), read from the pieces left after cutting: every cut edge gets its length.
+        drawPolygonCutLabels(layout, tiles) {
+            const ppi = CONFIG.PIXELS_PER_INCH;
+            const candidates = [];
+            for (const tile of tiles) {
+                if (!tile.clip || tile.clip.failed) continue;
+                for (const piece of tile.clip.pieces) {
+                    const inPiece = (pt) => pointInPolygon(pt, piece.ring) && !piece.cutouts.some(c => pointInPolygon(pt, c));
+                    const edges = [];
+                    piece.ring.forEach((p, i) => { if (!p.u) edges.push([p, piece.ring[(i + 1) % piece.ring.length]]); });
+                    for (const c of piece.cutouts) c.forEach((p, i) => edges.push([p, c[(i + 1) % c.length]]));
+                    for (const [a, b] of edges) {
+                        const lenIn = distance(a, b);
+                        if (lenIn < 0.05) continue;
+                        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+                        // nudge the label to the side of the edge that is on the tile
+                        const nx = -(b.y - a.y) / lenIn, ny = (b.x - a.x) / lenIn, step = 8 / this.zoom / ppi;
+                        const side = inPiece({ x: mid.x + nx * 0.2, y: mid.y + ny * 0.2 }) ? 1 : -1;
+                        const wa = layout.toWorld(a.x * ppi, a.y * ppi), wb = layout.toWorld(b.x * ppi, b.y * ppi);
+                        const at = layout.toWorld((mid.x + nx * side * step) * ppi, (mid.y + ny * side * step) * ppi);
+                        candidates.push({ midpoint: at, length: lenIn, angle: Math.atan2(wb.y - wa.y, wb.x - wa.x) });
+                    }
+                }
+            }
+            const dedupDist = 25 / this.zoom;
+            const unique = [];
+            for (const cand of candidates) {
+                const rounded = Math.round(cand.length * 100) / 100;
+                if (!unique.some(e => Math.abs(rounded - Math.round(e.length * 100) / 100) < 0.02 && distance(cand.midpoint, e.midpoint) < dedupDist)) unique.push(cand);
+            }
+            for (const label of this.collapseRepeatedLabels(unique)) {
+                this.drawMeasurementLabel(this.ctx, formatMeasurement(label.length, this.unitMode), label.midpoint, label.angle);
+            }
+        }
+
+        // The angle at each corner of a cut hexagon piece where a cut edge meets another edge, inside the piece.
+        drawPolygonCutAngles(layout, tiles) {
+            const ctx = this.ctx, ppi = CONFIG.PIXELS_PER_INCH;
+            const drawn = [];
+            for (const tile of tiles) {
+                if (!tile.clip || tile.clip.failed) continue;
+                for (const piece of tile.clip.pieces) {
+                    const ring = piece.ring, n = ring.length, sign = ringArea(ring) >= 0 ? 1 : -1;
+                    ring.forEach((p, i) => {
+                        const prev = ring[(i + n - 1) % n], next = ring[(i + 1) % n];
+                        if (prev.u && p.u) return;   // both edges are the tile's own: the tile's corner, not a cut
+                        const e1 = { x: p.x - prev.x, y: p.y - prev.y }, e2 = { x: next.x - p.x, y: next.y - p.y };
+                        const turn = Math.atan2(e1.x * e2.y - e1.y * e2.x, e1.x * e2.x + e1.y * e2.y);
+                        const interior = (Math.PI - sign * turn) * 180 / Math.PI;
+                        if (interior > 179.5 || interior < 0.5 || interior > 180) return;
+                        const text = (Math.round(interior * 10) / 10) + '°';
+                        const u = { x: prev.x - p.x, y: prev.y - p.y }, v = { x: next.x - p.x, y: next.y - p.y };
+                        const ul = Math.hypot(u.x, u.y), vl = Math.hypot(v.x, v.y);
+                        if (ul < 0.05 || vl < 0.05) return;
+                        let bx = u.x / ul + v.x / vl, by = u.y / ul + v.y / vl;
+                        const bl = Math.hypot(bx, by);
+                        if (bl < 0.2) return;
+                        const world = layout.toWorld(p.x * ppi, p.y * ppi);
+                        if (drawn.some(d => d.text === text && distance(d.pos, world) < 30 / this.zoom)) return;
+                        drawn.push({ text, pos: world });
+                        // the label sits a little way inside the piece, along the corner's bisector
+                        const back = layout.toWorld((p.x + bx / bl * 0.5) * ppi, (p.y + by / bl * 0.5) * ppi);
+                        const dirX = back.x - world.x, dirY = back.y - world.y, dl = Math.hypot(dirX, dirY) || 1;
+                        const lx = world.x + dirX / dl * 22 / this.zoom, ly = world.y + dirY / dl * 22 / this.zoom;
+                        ctx.save();
+                        ctx.translate(lx, ly);
+                        ctx.scale(1 / this.zoom, 1 / this.zoom);
+                        const als = this.labelScale;
+                        ctx.font = `bold ${10 * als}px sans-serif`;
+                        const metrics = ctx.measureText(text);
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                        ctx.fillRect(-metrics.width / 2 - 2 * als, -9 * als, metrics.width + 4 * als, 15 * als);
+                        ctx.fillStyle = this.displayColors.angle;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(text, 0, 0);
+                        ctx.restore();
+                    });
+                }
+            }
         }
 
         // The tile layout in use. Every surface shares one for now; per-surface layouts only need this to look at `surface`.
         getLayoutForSurface(surface) { return this.getLayout(); }
 
+        // A hexagon is set by its width across the flats; its height (corner to corner) follows.
+        hexagonHeightInches() { return this.tileWidthInches * 2 / Math.sqrt(3); }
+
         getLayout() {
             return new TileLayout({
-                tileW: this.tileWidthInches * CONFIG.PIXELS_PER_INCH, tileH: this.tileHeightInches * CONFIG.PIXELS_PER_INCH,
+                tileW: this.tileWidthInches * CONFIG.PIXELS_PER_INCH, tileH: (this.pattern === 'hexagon' ? this.hexagonHeightInches() : this.tileHeightInches) * CONFIG.PIXELS_PER_INCH,
                 tile2W: this.tile2WidthInches * CONFIG.PIXELS_PER_INCH, tile2H: this.tile2HeightInches * CONFIG.PIXELS_PER_INCH,
                 pattern: this.pattern, groutW: this.effectiveGrout() * CONFIG.PIXELS_PER_INCH, bond: this.bondOffset, weave: this.weaveCount(),
                 rotationRad: (this.rotationDegrees * Math.PI) / 180,
@@ -6350,13 +6499,14 @@
         // True when the surface's outline (an island or a notch in a wall) crosses a tile whose four corners are all on the surface:
         // an island smaller than a tile sits inside it, or straddles a joint, without covering any corner.
         boundaryTouchesTile(tileCorners, surface, tileW, tileH) {
+            const n = tileCorners.length;   // 4 for a rectangle, 6 for a hexagon
             const rings = [this.getSurfaceOuterBoundary(surface).map(i => this.vertices[i])];
             if (surface.holes) for (const hole of surface.holes) rings.push(hole.map(i => this.vertices[i]));
             for (const ring of rings) {
                 for (let i = 0; i < ring.length; i++) {
                     const a = ring[i], b = ring[(i + 1) % ring.length];
-                    if (this.pointInTileBounds(a, tileCorners, tileW, tileH)) return true;
-                    for (let j = 0; j < 4; j++) if (lineSegmentIntersection(a, b, tileCorners[j], tileCorners[(j + 1) % 4])) return true;
+                    if (n === 4 ? this.pointInTileBounds(a, tileCorners, tileW, tileH) : pointInPolygon(a, tileCorners)) return true;
+                    for (let j = 0; j < n; j++) if (lineSegmentIntersection(a, b, tileCorners[j], tileCorners[(j + 1) % n])) return true;
                 }
             }
             return false;
@@ -6364,9 +6514,10 @@
 
         analyzeTileIntersectionWithSurface(tileCorners, surface, tileW, tileH) {
             const outerBoundary = this.getSurfaceOuterBoundary(surface);
+            const n = tileCorners.length;
             let cornersInside = 0;
             for (const corner of tileCorners) if (this.pointInSurface(corner, surface)) cornersInside++;
-            if (cornersInside === 4 && !this.boundaryTouchesTile(tileCorners, surface, tileW, tileH)) return null;   // a whole tile
+            if (cornersInside === n && !this.boundaryTouchesTile(tileCorners, surface, tileW, tileH)) return null;   // a whole tile
             
             if (cornersInside === 0) {
                 let hasIntersection = false;
@@ -6375,8 +6526,8 @@
                 
                 for (const polygon of boundaries) {
                     for (let i = 0; i < polygon.length && !hasIntersection; i++) {
-                        for (let j = 0; j < 4; j++) {
-                            if (lineSegmentIntersection(polygon[i], polygon[(i+1) % polygon.length], tileCorners[j], tileCorners[(j+1) % 4])) {
+                        for (let j = 0; j < n; j++) {
+                            if (lineSegmentIntersection(polygon[i], polygon[(i+1) % polygon.length], tileCorners[j], tileCorners[(j+1) % n])) {
                                 hasIntersection = true; break;
                             }
                         }
@@ -6388,9 +6539,11 @@
             
             return {
                 isPartial: true,
-                center: { x: (tileCorners[0].x + tileCorners[2].x) / 2, y: (tileCorners[0].y + tileCorners[2].y) / 2 },
+                center: n === 4 ? { x: (tileCorners[0].x + tileCorners[2].x) / 2, y: (tileCorners[0].y + tileCorners[2].y) / 2 }
+                    : { x: tileCorners.reduce((sum, c) => sum + c.x, 0) / n, y: tileCorners.reduce((sum, c) => sum + c.y, 0) / n },
                 corners: tileCorners,
-                cutEdges: this.findCutEdges(tileCorners, surface),
+                cutEdges: n === 4 ? this.findCutEdges(tileCorners, surface) : [],   // a hexagon's cuts are read from its clipped pieces instead
+                poly: n !== 4,
                 cornersInside,
                 _surface: surface
             };
@@ -6946,7 +7099,15 @@
             ctx.translate(offsetX, offsetY);
             ctx.rotate(rotationRad);
             
-            for (const { x, y, w, h } of layout.tilesCovering(bounds.minX - totalPadding, bounds.minY - totalPadding, bounds.maxX + totalPadding, bounds.maxY + totalPadding)) {
+            for (const { x, y, w, h, poly, slot } of layout.tilesCovering(bounds.minX - totalPadding, bounds.minY - totalPadding, bounds.maxX + totalPadding, bounds.maxY + totalPadding)) {
+                if (poly) {
+                    // a hexagon: the grout is the hexagon one joint wider, drawn first
+                    const trace = (pts) => { ctx.beginPath(); pts.forEach((c, i) => (i ? ctx.lineTo(c.x, c.y) : ctx.moveTo(c.x, c.y))); ctx.closePath(); };
+                    if (groutW > 0) { ctx.fillStyle = CONFIG.COLORS.GROUT; trace(slot); ctx.fill(); }
+                    ctx.fillStyle = CONFIG.COLORS.TILE_FILL; trace(poly); ctx.fill();
+                    ctx.strokeStyle = CONFIG.COLORS.TILE_STROKE; ctx.lineWidth = strokeWidth; ctx.stroke();
+                    continue;
+                }
                 ctx.fillStyle = CONFIG.COLORS.TILE_FILL;
                 ctx.fillRect(x, y, w, h);
                 ctx.strokeStyle = CONFIG.COLORS.TILE_STROKE;

@@ -34,6 +34,8 @@ const layouts = {
   hopscotchSquares: { tile: { pattern: 'hopscotch', tileWidthInches: 12, tileHeightInches: 12, tile2WidthInches: 6, tile2HeightInches: 6 }, surface: room(rect(0, 0, 100, 80), [rect(30, 20, 20, 20)]) },
   hopscotchDefault: { tile: { pattern: 'hopscotch', tileWidthInches: 24, tileHeightInches: 12 }, surface: room([[28, 0], [90, 0], [90, 80], [16, 80], [16, 46], [0, 46], [0, 18]]) },
   hopscotchRotated: { tile: { pattern: 'hopscotch', tileWidthInches: 18, tileHeightInches: 12, tile2WidthInches: 7, tile2HeightInches: 10, rotationDegrees: 30, offsetXInches: 3 }, surface: room(rect(0, 0, 110, 90), [rect(40, 30, 30, 20)]) },
+  hexagon: { tile: { pattern: 'hexagon', tileWidthInches: 8, groutWidthInches: 0.25 }, surface: room(rect(0, 0, 100, 70), [rect(30, 20, 20, 16)]) },
+  hexagonRotated: { tile: { pattern: 'hexagon', tileWidthInches: 6, groutWidthInches: 0.125, rotationDegrees: 30, offsetXInches: 2 }, surface: room([[28, 0], [90, 0], [90, 80], [16, 80], [16, 46], [0, 46], [0, 18]]) },
   steppedThird: { tile: { pattern: 'stepped', tileWidthInches: 12, tileHeightInches: 6, bondOffset: 0.3333, groutWidthInches: 0.125 }, surface: room(rect(0, 0, 100, 70)) },
   herringbone: { tile: { pattern: 'herringbone', tileWidthInches: 12, tileHeightInches: 3, groutWidthInches: 0.125 }, surface: room([[0, 0], [90, 0], [90, 40], [50, 40], [50, 70], [0, 70]]) },
   herringbone45: { tile: { pattern: 'herringbone', tileWidthInches: 9, tileHeightInches: 3, groutWidthInches: 0.125, rotationDegrees: 45, offsetXInches: 2 }, surface: room(rect(0, 0, 100, 70), [rect(30, 20, 20, 20)]) },

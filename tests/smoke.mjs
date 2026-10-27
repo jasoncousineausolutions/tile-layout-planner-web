@@ -681,6 +681,59 @@ await step('hopscotch: the second tile fields appear with 8 x 8, the two sizes f
   await p.context().close();
 });
 
+await step('hexagon: width is across the flats, the height box is worked out and locked, the hexagons fit, every piece is accounted for, and it saves and loads', async () => {
+  const K = 10.8;
+  const design = (rot) => JSON.stringify({ format: 'tile-planner-design', version: '1.1', appState: { unitMode: 'decimal2', snapMode: 'auto', currentTab: 'surfaceDesign', zoom: 1, panX: 40, panY: 40 },
+    tileLayout: { tileWidthInches: 8, tileHeightInches: 12, groutWidthInches: 0.25, tileDepthInches: 0.5, bondOffset: 0, pattern: 'hexagon', rotationDegrees: rot, offsetXInches: 1.5, offsetYInches: 0 },
+    surface: { vertices: [[0, 0], [60, 0], [60, 40], [0, 40], [24, 14], [34, 14], [34, 22], [24, 22]].map(([x, y]) => ({ x: x * K, y: y * K })), lines: [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4]] } });
+  const p = await newPage({ width: 1280, height: 800 });
+  await p.evaluate((j) => app.importDesign(j), design(0));
+  const ui = await p.evaluate(() => ({ disabled: document.getElementById('tileHeight').disabled, height: parseFloat(document.getElementById('tileHeight').value), hint: document.getElementById('weaveHint').style.display, tile2: document.getElementById('tile2Row').style.display }));
+  expect(ui.disabled && Math.abs(ui.height - 8 * 2 / Math.sqrt(3)) < 0.01 && ui.hint !== 'none' && ui.tile2 === 'none', 'the hexagon height box should be locked at the worked-out height: ' + JSON.stringify(ui));
+  await p.fill('#tileWidth', '10'); await p.waitForTimeout(100);
+  expect(Math.abs(parseFloat(await p.inputValue('#tileHeight')) - 10 * 2 / Math.sqrt(3)) < 0.01, 'the height box should follow the width');
+  await p.fill('#tileWidth', '8');
+  await p.selectOption('#tilePattern', 'grid');
+  const back = await p.evaluate(() => ({ disabled: document.getElementById('tileHeight').disabled, height: parseFloat(document.getElementById('tileHeight').value) }));
+  expect(!back.disabled && back.height === 12, 'leaving hexagon should give back the typed height (12): ' + JSON.stringify(back));
+  await p.selectOption('#tilePattern', 'hexagon');
+  // the hexagons: equal, one joint apart, no gaps (every sample point is in some hexagon's grout box)
+  const geometry = await p.evaluate(() => {
+    const k = CONFIG.PIXELS_PER_INCH, layout = app.getLayout(), F = 8 * k, g = 0.25 * k;
+    const tiles = layout.tilesIn(-300, -300, 1200, 1200);
+    const areas = tiles.map((t) => Math.abs(ringArea(t.poly.map((c) => ({ x: c.x, y: c.y })))));
+    let tooClose = 0, holes = 0;
+    const centres = tiles.map((t) => ({ x: t.x + t.w / 2, y: t.y + t.h / 2 }));
+    for (let i = 0; i < centres.length; i++) for (let j = i + 1; j < centres.length; j++) if (Math.hypot(centres[i].x - centres[j].x, centres[i].y - centres[j].y) < F + g - 1e-6) tooClose++;
+    for (let x = 100; x < 900; x += 11.3) for (let y = 100; y < 900; y += 10.9) if (!tiles.some((t) => pointInPolygon({ x, y }, t.slot))) holes++;
+    return { count: tiles.length, areaSpread: Math.max(...areas) - Math.min(...areas), area: areas[0] / (k * k), tooClose, holes };
+  });
+  expect(geometry.tooClose === 0 && geometry.holes === 0 && geometry.areaSpread < 1e-6 && Math.abs(geometry.area - Math.sqrt(3) / 2 * 64) < 0.01, 'the hexagons do not fit: ' + JSON.stringify(geometry));
+  // every piece is accounted for: whole tiles plus cut pieces cover the surface less the grout, at 0 and 30 degrees
+  for (const rot of [0, 30]) {
+    await p.evaluate((j) => app.importDesign(j), design(rot));
+    await p.click('.tab[data-tab="finalize"]'); await p.waitForTimeout(250);
+    const r = await p.evaluate(() => {
+      app.selectedSurfaces = [0]; app.updateTileCount();
+      const area = app.computeSurfaceArea(app.detectedSurfaces[0]);
+      const list = app.computeCutList();
+      const pieceArea = list.groups.reduce((sum, grp) => sum + grp.qty * (Math.abs(ringArea(grp.ring)) - grp.holes.reduce((s, h) => s + Math.abs(ringArea(h)), 0)), 0);
+      const full = parseInt([...document.querySelectorAll('#tileCountSummary .count-row')].find((row) => row.textContent.startsWith('Full tiles')).querySelector('.count-value').textContent, 10);
+      const labels = []; const draw = app.drawMeasurementLabel.bind(app);
+      app.drawMeasurementLabel = (c, t, m, a) => { labels.push(t); return draw(c, t, m, a); };
+      app.redraw(); app.drawMeasurementLabel = draw;
+      return { area, covered: full * (Math.sqrt(3) / 2) * 64 + pieceArea, labels: labels.length, pieces: list.pieces };
+    });
+    const ratio = r.covered / r.area;
+    expect(ratio > 0.9 && ratio <= 1.0001, `hexagon tiles and pieces should cover the surface less its grout at ${rot} degrees: ` + JSON.stringify(r));
+    expect(r.labels > 10 && r.pieces > 10, `cut hexagons should be labelled and listed at ${rot} degrees: ` + JSON.stringify(r));
+  }
+  // save and load
+  const saved = JSON.parse(await p.evaluate(() => app.exportDesign()));
+  expect(saved.tileLayout.pattern === 'hexagon' && saved.tileLayout.tileWidthInches === 8, 'hexagon should be saved: ' + JSON.stringify(saved.tileLayout));
+  await p.context().close();
+});
+
 await browser.close();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) { console.log('Failed: ' + failures.join('; ')); process.exit(1); }

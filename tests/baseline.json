@@ -23,6 +23,18 @@
   "surfaces": 1,
   "summary": "Surface area: 48.61 ft² Full tiles (no cuts): 82 Width cuts (paired): 22 cuts → 11 tiles Height cuts (paired): 16 cuts → 8 tiles Diagonal/complex cuts: 4 tiles Estimated tiles to buy: 105 Grout (Sanded): 22.6 lbs"
  },
+ "hopscotchSquares": {
+  "surfaces": 2,
+  "summary": "Surface area: 55.56 ft² Full tiles (no cuts): 65 Width cuts (paired): 15 cuts → 9 tiles Height cuts (paired): 20 cuts → 11 tiles Diagonal/complex cuts: 13 tiles Estimated tiles to buy: 98 Grout (Sanded): 20.6 lbs"
+ },
+ "hopscotchDefault": {
+  "surfaces": 1,
+  "summary": "Surface area: 44.47 ft² Full tiles (no cuts): 25 Width cuts (paired): 11 cuts → 8 tiles Height cuts (paired): 6 cuts → 4 tiles Diagonal/complex cuts: 5 tiles Estimated tiles to buy: 42 Grout (Sanded): 12.2 lbs"
+ },
+ "hopscotchRotated": {
+  "surfaces": 2,
+  "summary": "Surface area: 68.75 ft² Full tiles (no cuts): 39 Width cuts (paired): 0 cuts → 0 tiles Height cuts (paired): 0 cuts → 0 tiles Diagonal/complex cuts: 63 tiles Estimated tiles to buy: 102 Grout (Sanded): 21.0 lbs"
+ },
  "steppedThird": {
   "surfaces": 1,
   "summary": "Surface area: 48.61 ft² Full tiles (no cuts): 81 Width cuts (paired): 18 cuts → 11 tiles Height cuts (paired): 7 cuts → 4 tiles Diagonal/complex cuts: 2 tiles Estimated tiles to buy: 98 Grout (Sanded): 22.6 lbs"

@@ -637,6 +637,50 @@ await step('islands smaller than a tile: their cut tiles get labels, are in the 
   await p.context().close();
 });
 
+await step('hopscotch: the second tile fields appear with 8 x 8, the two sizes fit with no gaps or overlaps, and it saves and loads', async () => {
+  const p = await newPage({ width: 1280, height: 800 });
+  expect(!(await p.isVisible('#tile2Row')), 'the second tile fields should be hidden for a grid');
+  await p.selectOption('#tilePattern', 'hopscotch');
+  expect(await p.isVisible('#tile2Row'), 'the second tile fields should show for hopscotch');
+  const defaults = await p.evaluate(() => [parseFloat(document.getElementById('tile2Width').value), parseFloat(document.getElementById('tile2Height').value)]);
+  expect(defaults[0] === 8 && defaults[1] === 8, 'the second tile should start at 8 x 8: ' + defaults);
+  await p.selectOption('#tilePattern', 'basketweave');
+  expect(!(await p.isVisible('#tile2Row')), 'the second tile fields should hide again for other patterns');
+  await p.selectOption('#tilePattern', 'hopscotch');
+  // any two sizes: tile slots (tile + grout) never overlap, and cover every point of a window
+  const result = await p.evaluate(() => {
+    const out = [];
+    for (const [W, H, w, h, g] of [[12, 12, 6, 6, 0.125], [24, 12, 8, 8, 0.125], [12, 24, 8, 4, 0], [10, 10, 3, 7, 0.25], [8, 8, 8, 8, 0.125]]) {
+      app.tileWidthInches = W; app.tileHeightInches = H; app.tile2WidthInches = w; app.tile2HeightInches = h; app.groutWidthInches = g;
+      const k = CONFIG.PIXELS_PER_INCH, layout = app.getLayout(), gp = g * k;
+      const tiles = layout.tilesIn(-400, -400, 1400, 1400).map((t) => ({ x: t.x, y: t.y, x2: t.x + t.w + gp, y2: t.y + t.h + gp, big: t.w === W * k && t.h === H * k }));
+      let overlaps = 0, holes = 0;
+      for (let i = 0; i < tiles.length; i++) for (let j = i + 1; j < tiles.length; j++) {
+        const a = tiles[i], b = tiles[j];
+        if (a.x < b.x2 - 1e-6 && b.x < a.x2 - 1e-6 && a.y < b.y2 - 1e-6 && b.y < a.y2 - 1e-6) overlaps++;
+      }
+      for (let x = 100; x < 900; x += 13.7) for (let y = 100; y < 900; y += 13.3) if (!tiles.some((t) => x >= t.x && x < t.x2 && y >= t.y && y < t.y2)) holes++;
+      out.push({ size: [W, H, w, h, g], overlaps, holes, bigs: tiles.filter((t) => t.big).length, smalls: tiles.filter((t) => !t.big).length });
+    }
+    return out;
+  });
+  for (const r of result) expect(r.overlaps === 0 && r.holes === 0 && r.bigs > 3 && (r.smalls > 3 || (r.size[0] === r.size[2] && r.size[1] === r.size[3])), 'hopscotch has gaps or overlaps: ' + JSON.stringify(r));
+  // save and load keep it
+  await p.evaluate(() => { app.tileWidthInches = 14; app.tileHeightInches = 14; app.tile2WidthInches = 5; app.tile2HeightInches = 9; app.groutWidthInches = 0.125; app.vertices = []; app.lines = []; });
+  const saved = await p.evaluate(() => app.exportDesign());
+  const tl = JSON.parse(saved).tileLayout;
+  expect(tl.pattern === 'hopscotch' && tl.tile2WidthInches === 5 && tl.tile2HeightInches === 9, 'the second tile should be saved: ' + JSON.stringify(tl));
+  await p.evaluate(() => { app.tile2WidthInches = 8; app.tile2HeightInches = 8; app.pattern = 'grid'; });
+  await p.evaluate((j) => app.importDesign(j), saved);
+  const back = await p.evaluate(() => ({ pattern: app.pattern, w: app.tile2WidthInches, h: app.tile2HeightInches, shown: getComputedStyle(document.getElementById('tile2Row')).display }));
+  expect(back.pattern === 'hopscotch' && back.w === 5 && back.h === 9 && back.shown !== 'none', 'the design did not load back as it was saved: ' + JSON.stringify(back));
+  // an old design with no second tile still opens, with 8 x 8 ready
+  await p.evaluate(() => { app.tile2WidthInches = 3; });
+  await p.evaluate((j) => app.importDesign(j), JSON.stringify({ ...JSON.parse(saved), tileLayout: { ...tl, pattern: 'grid', tile2WidthInches: undefined, tile2HeightInches: undefined } }));
+  expect(await p.evaluate(() => app.pattern === 'grid'), 'a grid design should load as a grid');
+  await p.context().close();
+});
+
 await browser.close();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) { console.log('Failed: ' + failures.join('; ')); process.exit(1); }

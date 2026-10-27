@@ -935,6 +935,58 @@ await step('sketch reader key (when switched on): saved only on the device, chec
   await p.context().close();
 });
 
+await step('two tile sizes: the estimate and the Tile and Cut List count each size separately', async () => {
+  const K = 10.8;
+  const design = (pattern, extra) => JSON.stringify({ format: 'tile-planner-design', version: '1.1', appState: { unitMode: 'decimal2', snapMode: 'auto', currentTab: 'surfaceDesign', zoom: 1, panX: 40, panY: 40 },
+    tileLayout: { tileWidthInches: 12, tileHeightInches: 12, groutWidthInches: 0.125, tileDepthInches: 0.5, bondOffset: 0, pattern, rotationDegrees: 0, offsetXInches: 0, offsetYInches: 0, ...extra },
+    surface: { vertices: [[0, 0], [60, 0], [60, 40], [0, 40]].map(([x, y]) => ({ x: x * K, y: y * K })), lines: [[0, 1], [1, 2], [2, 3], [3, 0]] } });
+  const p = await newPage({ width: 1280, height: 800 });
+  const summary = async (json) => {
+    await p.evaluate((j) => app.importDesign(j), json);
+    await p.click('.tab[data-tab="finalize"]'); await p.waitForTimeout(250);
+    return p.evaluate(() => {
+      app.selectedSurfaces = [0]; app.updateTileCount();
+      const rows = [...document.querySelectorAll('#tileCountSummary .count-row')].map((r) => [r.children[0].textContent.trim(), r.children[1] ? r.children[1].textContent.trim() : null]);
+      // the same rows go onto the printed list
+      const listRows = [...document.querySelectorAll('#tileCountSummary .count-row')].length;
+      return { rows, mobile: document.getElementById('tileCountSummaryMobile').innerHTML === document.getElementById('tileCountSummary').innerHTML, listRows };
+    });
+  };
+  // one size: no headings, one total
+  const single = await summary(design('grid', {}));
+  expect(single.rows.filter(([l, v]) => v === null).length === 0 && single.rows.some(([l]) => l === 'Estimated tiles to buy:'), 'one size should keep the single total: ' + JSON.stringify(single.rows));
+  // two sizes: a heading, the counts and a "Tiles to buy" line for each
+  for (const [pattern, extra, second] of [['hopscotch', { tile2WidthInches: 6, tile2HeightInches: 6 }, '6.00" × 6.00" tiles'], ['pinwheel', { tileWidthInches: 8, tileHeightInches: 4, tile2WidthInches: 3.796875 }, '3.80" × 3.80" tiles']]) {
+    const two = await summary(design(pattern, extra));
+    const headings = two.rows.filter(([l, v]) => v === null).map(([l]) => l);
+    const buys = two.rows.filter(([l]) => l === 'Tiles to buy:').map(([, v]) => parseInt(v, 10));
+    expect(headings.length === 2 && headings[1] === second, `${pattern}: each size should have a heading: ` + JSON.stringify(headings));
+    expect(buys.length === 2 && buys.every((n) => n > 0), `${pattern}: each size should say how many tiles to buy: ` + JSON.stringify(two.rows));
+    expect(!two.rows.some(([l]) => l === 'Estimated tiles to buy:'), `${pattern}: sizes that differ should not be added into one total`);
+    expect(two.mobile, `${pattern}: the phone summary should match`);
+    // each size's full tiles are counted on their own: they match counting them one by one
+    const direct = await p.evaluate(() => {
+      const layout = app.getLayout(), ppi = CONFIG.PIXELS_PER_INCH, surface = app.detectedSurfaces[0], rings = app.surfaceRings(layout, surface);
+      const xs = app.getSurfaceOuterBoundary(surface).map((i) => app.vertices[i].x), ys = app.getSurfaceOuterBoundary(surface).map((i) => app.vertices[i].y);
+      const counts = { first: 0, second: 0 };
+      for (const tile of layout.tilesCovering(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), layout.reach * 2)) {
+        const info = app.analyzeTileIntersectionWithSurface(tile.corners, surface, layout.tileW, layout.tileH);
+        const whole = info ? app.clipTile(tile, rings).full : app.pointInSurface({ x: (tile.corners[0].x + tile.corners[2].x) / 2, y: (tile.corners[0].y + tile.corners[2].y) / 2 }, surface);
+        if (!whole) continue;
+        const lo = Math.min(tile.w, tile.h), hi = Math.max(tile.w, tile.h);
+        if (Math.abs(lo - Math.min(layout.tileW, layout.tileH)) < 0.01 && Math.abs(hi - Math.max(layout.tileW, layout.tileH)) < 0.01) counts.first++; else counts.second++;
+      }
+      return counts;
+    });
+    const fulls = two.rows.filter(([l]) => l === 'Full tiles (no cuts):').map(([, v]) => parseInt(v, 10));
+    expect(fulls[0] === direct.first && fulls[1] === direct.second, `${pattern}: full tiles per size should be ${JSON.stringify(direct)} but were ${JSON.stringify(fulls)}`);
+  }
+  // two sizes that are really the same size are one size
+  const same = await summary(design('hopscotch', { tile2WidthInches: 12, tile2HeightInches: 12 }));
+  expect(same.rows.filter(([l, v]) => v === null).length === 0, 'two equal sizes should be reported as one: ' + JSON.stringify(same.rows));
+  await p.context().close();
+});
+
 await browser.close();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) { console.log('Failed: ' + failures.join('; ')); process.exit(1); }

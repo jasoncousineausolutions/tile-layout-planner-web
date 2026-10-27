@@ -434,6 +434,8 @@
             color: var(--slate-gray);
         }
         
+        .tile-count-summary .count-heading { margin-top: var(--space-sm); }
+        .tile-count-summary .count-heading .count-label { font-weight: 700; color: var(--slate-gray); }
         .tile-count-summary .count-total {
             border-top: 1px solid var(--light-gray);
             margin-top: 4px;
@@ -4126,18 +4128,18 @@
             const tolerance = 0.15;
             
             // Cuts are paired within one tile size: two pieces from the same kind of tile can share a tile, and a second-size tile cannot supply a first-size piece.
-            const kinds = [{ fullW: tileW / CONFIG.PIXELS_PER_INCH, fullH: tileH / CONFIG.PIXELS_PER_INCH, widthCuts: [], heightCuts: [] }];
-            if (layout.twoTile) kinds.push({ fullW: layout.tile2W / CONFIG.PIXELS_PER_INCH, fullH: layout.tile2H / CONFIG.PIXELS_PER_INCH, widthCuts: [], heightCuts: [] });
+            // Each kind keeps its own counts, so a layout with two sizes reports them separately.
+            const newKind = (w, h) => ({ fullW: w / CONFIG.PIXELS_PER_INCH, fullH: h / CONFIG.PIXELS_PER_INCH, widthCuts: [], heightCuts: [], full: 0, diagonal: 0 });
             const sameSize = (a, b) => Math.abs(a - b) < 0.01;
+            const twoSizes = layout.twoTile && !(sameSize(Math.min(tileW, tileH), Math.min(layout.tile2W, layout.tile2H)) && sameSize(Math.max(tileW, tileH), Math.max(layout.tile2W, layout.tile2H)));
+            const kinds = [newKind(tileW, tileH)];
+            if (twoSizes) kinds.push(newKind(layout.tile2W, layout.tile2H));
             const kindOf = (tile) => {
-                if (!layout.twoTile) return kinds[0];
+                if (!twoSizes) return kinds[0];
                 const lo = Math.min(tile.w, tile.h), hi = Math.max(tile.w, tile.h);
                 const isFirst = sameSize(lo, Math.min(tileW, tileH)) && sameSize(hi, Math.max(tileW, tileH));
                 return isFirst ? kinds[0] : kinds[1];
             };
-            
-            let fullTiles = 0;
-            let diagonalCuts = 0;
             
             for (const surfaceIdx of this.selectedSurfaces) {
                 const surface = this.detectedSurfaces[surfaceIdx];
@@ -4157,10 +4159,10 @@
                     for (const corner of tileCorners) if (this.pointInSurface(corner, surface)) cornersInside++;
                     
                     if (cornersInside === sides) {
-                        if (!this.boundaryTouchesTile(tileCorners, surface, layout.tileW, layout.tileH)) { fullTiles++; continue; }
+                        if (!this.boundaryTouchesTile(tileCorners, surface, layout.tileW, layout.tileH)) { kindOf(tile).full++; continue; }
                         // an island smaller than the tile (or a notch in a wall) cuts into it: a whole tile, but one with no off-cut to pair
                         const whole = this.clipTile(tile, rings);
-                        if (!whole.failed && whole.full) fullTiles++; else diagonalCuts++;
+                        if (!whole.failed && whole.full) kindOf(tile).full++; else kindOf(tile).diagonal++;
                         continue;
                     }
                     
@@ -4184,11 +4186,11 @@
                     const clipped = this.clipTile(tile, rings);
                     if (!clipped.failed) {
                         if (clipped.area < CUT_MIN_AREA_SQIN) continue;
-                        if (clipped.full) { fullTiles++; continue; }
+                        if (clipped.full) { kindOf(tile).full++; continue; }
                     }
                     
                     // A cut hexagon has no width or height cut to pair with another, so each one is a tile of its own
-                    if (tile.poly) { diagonalCuts++; continue; }
+                    if (tile.poly) { kindOf(tile).diagonal++; continue; }
                     
                     // Partial tile — analyze the cut type
                     const { widthCuts, heightCuts } = kindOf(tile);
@@ -4227,18 +4229,21 @@
                     }
                     
                     if (hasDiagonal) {
-                        diagonalCuts++;
+                        kindOf(tile).diagonal++;
                     } else if (widthCut !== null && heightCut !== null) {
-                        diagonalCuts++; // two-axis cut, can't pair
+                        kindOf(tile).diagonal++; // two-axis cut, can't pair
                     } else if (widthCut !== null) {
                         (tile.swap ? heightCuts : widthCuts).push(widthCut);   // a turned tile's x edge is its height
                     } else if (heightCut !== null) {
                         (tile.swap ? widthCuts : heightCuts).push(heightCut);
                     } else {
-                        diagonalCuts++;
+                        kindOf(tile).diagonal++;
                     }
                 }
             }
+            
+            const fullTiles = kinds.reduce((n, k) => n + k.full, 0);
+            const diagonalCuts = kinds.reduce((n, k) => n + k.diagonal, 0);
             
             // Greedy pairing: sort cuts descending, pair largest with smallest that fits
             const pairCuts = (cuts, fullDim) => {
@@ -4340,14 +4345,30 @@
                 groutHtml = '<div class="count-row" style="margin-top:4px;border-top:1px solid #D8DEE9;padding-top:4px;"><span class="count-label" style="font-style:italic;">Set a Grout Width &gt; 0 for grout estimate</span></div>';
             }
             
-            const html =
-                '<div class="count-row"><span class="count-label">Surface area:</span><span class="count-value">' + areaStr + '</span></div>' +
-                '<div class="count-row"><span class="count-label">Full tiles (no cuts):</span><span class="count-value">' + fullTiles + '</span></div>' +
-                '<div class="count-row"><span class="count-label">Width cuts (paired):</span><span class="count-value">' + widthCuts.length + ' cuts \u2192 ' + widthTilesNeeded + ' tiles</span></div>' +
-                '<div class="count-row"><span class="count-label">Height cuts (paired):</span><span class="count-value">' + heightCuts.length + ' cuts \u2192 ' + heightTilesNeeded + ' tiles</span></div>' +
-                (diagonalCuts > 0 ? '<div class="count-row"><span class="count-label">Diagonal/complex cuts:</span><span class="count-value">' + diagonalCuts + ' tiles</span></div>' : '') +
-                '<div class="count-row count-total"><span class="count-label">Estimated tiles to buy:</span><span class="count-value">' + totalTiles + '</span></div>' +
-                groutHtml;
+            const row = (label, value, cls) => '<div class="count-row' + (cls ? ' ' + cls : '') + '"><span class="count-label">' + label + '</span>' + (value === null ? '' : '<span class="count-value">' + value + '</span>') + '</div>';
+            let html;
+            if (kinds.length === 1) {
+                html = row('Surface area:', areaStr) +
+                    row('Full tiles (no cuts):', fullTiles) +
+                    row('Width cuts (paired):', widthCuts.length + ' cuts \u2192 ' + widthTilesNeeded + ' tiles') +
+                    row('Height cuts (paired):', heightCuts.length + ' cuts \u2192 ' + heightTilesNeeded + ' tiles') +
+                    (diagonalCuts > 0 ? row('Diagonal/complex cuts:', diagonalCuts + ' tiles') : '') +
+                    row('Estimated tiles to buy:', totalTiles, 'count-total') +
+                    groutHtml;
+            } else {
+                // Two tile sizes: the counts for each size, one after the other. A grand total of tiles of different sizes would mean nothing.
+                html = row('Surface area:', areaStr);
+                for (const k of kinds) {
+                    const wt = pairCuts(k.widthCuts, k.fullW), ht = pairCuts(k.heightCuts, k.fullH);
+                    html += row(formatMeasurement(k.fullW, this.unitMode) + ' \u00D7 ' + formatMeasurement(k.fullH, this.unitMode) + ' tiles', null, 'count-heading') +
+                        row('Full tiles (no cuts):', k.full) +
+                        row('Width cuts (paired):', k.widthCuts.length + ' cuts \u2192 ' + wt + ' tiles') +
+                        row('Height cuts (paired):', k.heightCuts.length + ' cuts \u2192 ' + ht + ' tiles') +
+                        (k.diagonal > 0 ? row('Diagonal/complex cuts:', k.diagonal + ' tiles') : '') +
+                        row('Tiles to buy:', k.full + wt + ht + k.diagonal, 'count-total');
+                }
+                html += groutHtml;
+            }
             el.innerHTML = html;
             elMobile.innerHTML = html;
         }
@@ -5464,7 +5485,7 @@
             
             c.font = '34px sans-serif';
             for (const [label, value] of rows) {
-                const strong = /to buy/i.test(label);
+                const strong = /to buy/i.test(label) || value === '';   // the totals, and the heading of each tile size
                 c.font = (strong ? 'bold ' : '') + '34px sans-serif';
                 c.fillStyle = INK;
                 c.fillText(label, M, y + 34);

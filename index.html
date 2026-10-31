@@ -436,6 +436,7 @@
         
         .tile-count-summary .count-heading { margin-top: var(--space-sm); }
         .tile-count-summary .count-heading .count-label { font-weight: 700; color: var(--slate-gray); }
+        .kind-swatch { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; border: 1px solid var(--steel-blue); }
         .tile-count-summary .count-total {
             border-top: 1px solid var(--light-gray);
             margin-top: 4px;
@@ -2213,6 +2214,7 @@
         // Colors (Nord-inspired, CAD-friendly)
         COLORS: {
             TILE_FILL: '#E5E9F0',
+            TILE_FILL_2: '#C9D3E2',   // the second tile size of a two-size layout, slightly darker
             TILE_STROKE: '#4C566A',
             GROUT: '#6C7A8A',
             LINE_DEFAULT: '#2E3440',
@@ -2272,6 +2274,7 @@
     // wherever in the tile they came from, so a 4" strip cut from one edge and one cut from the other are the same cut.
     const CUT_MATCH_TOLERANCE_IN = 0.04;   // pieces closer than this at every corner are the same cut
     const FILL_PIECE = '#D8DEE9';
+    const FILL_PIECE_2 = '#BCC8DA';   // a piece cut from the second tile size
     const SLIVER_LIMIT_IN = 2.5 / 2.54;   // a cut edge shorter than 2.5 cm is a sliver, awkward to cut and to fix
     const CUT_MIN_AREA_SQIN = 0.01;        // anything smaller is a tile edge touching a wall, not a cut
 
@@ -2359,14 +2362,15 @@
     }
 
     // Counts a piece against the matching group (same shape, same uncut edges), or starts a new one. Pieces with a hole in them are never grouped.
-    function addCutPiece(groups, ring, holes) {
+    // A piece cut from the second tile size of a layout (kind 1) is never counted with the same shape cut from the first: they may be different tiles.
+    function addCutPiece(groups, ring, holes, kind = 0) {
         const shape = normalizeRing(ring);
         if (!holes.length) {
-            const group = groups.find(g => !g.holes.length && ringsMatch(g.ring, shape));
+            const group = groups.find(g => g.kind === kind && !g.holes.length && ringsMatch(g.ring, shape));
             if (group) { group.qty++; return; }
         }
         const minX = Math.min(...ring.map(p => p.x)), minY = Math.min(...ring.map(p => p.y));
-        groups.push({ ring: shape, holes: holes.map(h => h.map(p => ({ x: p.x - minX, y: p.y - minY }))), qty: 1 });
+        groups.push({ ring: shape, holes: holes.map(h => h.map(p => ({ x: p.x - minX, y: p.y - minY }))), qty: 1, kind });
     }
 
     // ============================================================
@@ -2560,6 +2564,15 @@
             this.effH2 = tile2H + groutW;
             // the biggest a tile and its grout get, for looking a little past the edges of an area
             this.reach = this.twoTile ? Math.max(this.effW, this.effH, this.effW2, this.effH2) : Math.max(this.effW, this.effH);
+        }
+
+        // Which tile size a tile is: 0 for the first, 1 for the second of a two-size layout (turning a tile does not change its size).
+        kindOf(tile) {
+            if (!this.twoTile) return 0;
+            const near = (a, b) => Math.abs(a - b) < 0.01;
+            const lo = Math.min(tile.w, tile.h), hi = Math.max(tile.w, tile.h);
+            const firstLo = Math.min(this.tileW, this.tileH), firstHi = Math.max(this.tileW, this.tileH);
+            return near(lo, firstLo) && near(hi, firstHi) ? 0 : 1;
         }
 
         isUsable() { return this.effW > 1 && this.effH > 1 && (!this.twoTile || (this.effW2 > 1 && this.effH2 > 1)); }
@@ -4358,9 +4371,10 @@
             } else {
                 // Two tile sizes: the counts for each size, one after the other. A grand total of tiles of different sizes would mean nothing.
                 html = row('Surface area:', areaStr);
-                for (const k of kinds) {
+                for (const [index, k] of kinds.entries()) {
                     const wt = pairCuts(k.widthCuts, k.fullW), ht = pairCuts(k.heightCuts, k.fullH);
-                    html += row(formatMeasurement(k.fullW, this.unitMode) + ' \u00D7 ' + formatMeasurement(k.fullH, this.unitMode) + ' tiles', null, 'count-heading') +
+                    const swatch = '<span class="kind-swatch" style="background:' + (index === 1 ? CONFIG.COLORS.TILE_FILL_2 : CONFIG.COLORS.TILE_FILL) + '"></span>';   // the shade this size has on the drawing
+                    html += row(swatch + formatMeasurement(k.fullW, this.unitMode) + ' \u00D7 ' + formatMeasurement(k.fullH, this.unitMode) + ' tiles', null, 'count-heading') +
                         row('Full tiles (no cuts):', k.full) +
                         row('Width cuts (paired):', k.widthCuts.length + ' cuts \u2192 ' + wt + ' tiles') +
                         row('Height cuts (paired):', k.heightCuts.length + ' cuts \u2192 ' + ht + ' tiles') +
@@ -5428,11 +5442,11 @@
                     if (clipped.full) continue;
                     for (const piece of clipped.pieces) {
                         pieces++;
-                        addCutPiece(groups, piece.ring, piece.cutouts);
+                        addCutPiece(groups, piece.ring, piece.cutouts, layout.kindOf(tile));
                     }
                 }
             }
-            groups.sort((a, b) => Math.abs(ringArea(b.ring)) - Math.abs(ringArea(a.ring)));
+            groups.sort((a, b) => (a.kind - b.kind) || (Math.abs(ringArea(b.ring)) - Math.abs(ringArea(a.ring))));   // the first size's pieces, then the second's
             return { groups, pieces };
         }
 
@@ -5445,6 +5459,7 @@
             const fm = (inches) => formatMeasurement(inches, this.unitMode);
             const tileWIn = layout.tileW / ppi, tileHIn = layout.tileH / ppi;
             const { groups, pieces } = this.computeCutList();
+            const twoSizes = groups.some(g => g.kind === 1);   // pieces from a second tile size are in the list
             
             const W = 1700, H = 2200, M = 100;
             const INK = '#2E3440', MUTED = '#4C566A', LINE = '#D8DEE9', FILL = '#E5E9F0';
@@ -5484,11 +5499,19 @@
             c.fillText(settings, M, y + 30); y += 70;
             
             c.font = '34px sans-serif';
+            let headings = 0;
             for (const [label, value] of rows) {
                 const strong = /to buy/i.test(label) || value === '';   // the totals, and the heading of each tile size
                 c.font = (strong ? 'bold ' : '') + '34px sans-serif';
                 c.fillStyle = INK;
-                c.fillText(label, M, y + 34);
+                let labelX = M;
+                if (value === '') {
+                    // a tile size's heading starts with the shade that size has on the drawing and on its pieces below
+                    c.fillStyle = headings++ === 1 ? FILL_PIECE_2 : FILL_PIECE;
+                    c.fillRect(M, y + 8, 30, 30); c.strokeStyle = INK; c.lineWidth = 2; c.strokeRect(M, y + 8, 30, 30);
+                    c.fillStyle = INK; labelX = M + 46;
+                }
+                c.fillText(label, labelX, y + 34);
                 c.textAlign = 'right'; c.fillText(value, M + 820, y + 34); c.textAlign = 'left';
                 c.strokeStyle = LINE; c.lineWidth = 2; c.beginPath(); c.moveTo(M, y + 52); c.lineTo(M + 820, y + 52); c.stroke();
                 y += 66;
@@ -5513,7 +5536,15 @@
                 c.fillText('#' + (n + 1), x + 20, y + 44);
                 c.fillStyle = INK; c.font = 'bold 44px sans-serif'; c.textAlign = 'right';
                 c.fillText('×' + g.qty, x + cardW - 20, y + 48); c.textAlign = 'left';
-                this.drawCutPiece(c, g, x + 20, y + 70, cardW - 40, cardH - 90, fm);
+                let top = 70;
+                if (twoSizes) {
+                    // which tile this piece is cut from
+                    const dims = g.kind === 1 ? [layout.tile2W / ppi, layout.tile2H / ppi] : [tileWIn, tileHIn];
+                    c.fillStyle = g.kind === 1 ? FILL_PIECE_2 : FILL_PIECE; c.fillRect(x + 20, y + 66, 22, 22); c.strokeStyle = MUTED; c.lineWidth = 2; c.strokeRect(x + 20, y + 66, 22, 22);
+                    c.fillStyle = MUTED; c.font = '24px sans-serif'; c.fillText(`from ${fm(dims[0])} × ${fm(dims[1])} tile`, x + 52, y + 86);
+                    top = 100;
+                }
+                this.drawCutPiece(c, g, x + 20, y + top, cardW - 40, cardH - top - 20, fm, g.kind === 1 ? FILL_PIECE_2 : FILL_PIECE);
             });
             const pageTotal = canvases.length;
             canvases.forEach((cv, i) => {
@@ -5526,7 +5557,7 @@
         }
 
         // One cut piece, scaled to fit its box, with the length of every edge and any corner that is not square.
-        drawCutPiece(c, group, bx, by, bw, bh, fm) {
+        drawCutPiece(c, group, bx, by, bw, bh, fm, fill = FILL_PIECE) {
             const pts = group.ring;
             const pw = Math.max(...pts.map(p => p.x)), ph = Math.max(...pts.map(p => p.y));
             const labelFont = '24px sans-serif';
@@ -5537,7 +5568,7 @@
             
             c.beginPath(); path(pts);
             for (const h of group.holes) path(h);
-            c.fillStyle = FILL_PIECE; c.fill('evenodd');
+            c.fillStyle = fill; c.fill('evenodd');
             // uncut tile edges are solid; cut edges are dotted
             c.strokeStyle = '#000'; c.lineWidth = 3; c.lineCap = 'round';
             const edge = (p, q, uncut) => {
@@ -7301,7 +7332,7 @@
                     ctx.strokeStyle = CONFIG.COLORS.TILE_STROKE; ctx.lineWidth = strokeWidth; ctx.stroke();
                     continue;
                 }
-                ctx.fillStyle = CONFIG.COLORS.TILE_FILL;
+                ctx.fillStyle = layout.kindOf({ w, h }) === 1 ? CONFIG.COLORS.TILE_FILL_2 : CONFIG.COLORS.TILE_FILL;   // two sizes are shaded differently
                 ctx.fillRect(x, y, w, h);
                 ctx.strokeStyle = CONFIG.COLORS.TILE_STROKE;
                 ctx.lineWidth = strokeWidth;

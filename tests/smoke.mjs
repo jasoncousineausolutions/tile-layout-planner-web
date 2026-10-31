@@ -987,6 +987,49 @@ await step('two tile sizes: the estimate and the Tile and Cut List count each si
   await p.context().close();
 });
 
+await step('two tile sizes: pieces of the same shape from different tiles are kept apart, and each size has its own shade on the drawing and in the printed list', async () => {
+  const K = 10.8;
+  const design = (extra) => JSON.stringify({ format: 'tile-planner-design', version: '1.1', appState: { unitMode: 'decimal2', snapMode: 'auto', currentTab: 'surfaceDesign', zoom: 1, panX: 40, panY: 40 },
+    tileLayout: { tileWidthInches: 12, tileHeightInches: 12, groutWidthInches: 0.125, tileDepthInches: 0.5, bondOffset: 0, pattern: 'hopscotch', tile2WidthInches: 6, tile2HeightInches: 6, rotationDegrees: 0, offsetXInches: 0, offsetYInches: 0, ...extra },
+    surface: { vertices: [[0, 0], [50, 0], [50, 38], [0, 38]].map(([x, y]) => ({ x: x * K, y: y * K })), lines: [[0, 1], [1, 2], [2, 3], [3, 0]] } });
+  const p = await newPage({ width: 1280, height: 800 });
+  await p.evaluate(() => {
+    window.__fills = new Set();
+    const d = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'fillStyle');
+    Object.defineProperty(CanvasRenderingContext2D.prototype, 'fillStyle', { set(v) { window.__fills.add(String(v).toLowerCase()); d.set.call(this, v); }, get() { return d.get.call(this); } });
+    // the same shape from either kind of tile is two groups
+    const ring = [{ x: 0, y: 0, u: true }, { x: 6, y: 0, u: false }, { x: 6, y: 6, u: true }, { x: 0, y: 6, u: true }];
+    const groups = [];
+    addCutPiece(groups, ring, [], 0); addCutPiece(groups, ring, [], 1); addCutPiece(groups, ring, [], 1); addCutPiece(groups, ring, [], 0);
+    window.__apart = groups.map((g) => [g.kind, g.qty]);
+  });
+  expect(JSON.stringify(await p.evaluate(() => window.__apart)) === '[[0,2],[1,2]]', 'the same shape from the two kinds should be two groups: ' + JSON.stringify(await p.evaluate(() => window.__apart)));
+  await p.evaluate((j) => app.importDesign(j), design({}));
+  await p.click('.tab[data-tab="finalize"]'); await p.waitForTimeout(250);
+  const r = await p.evaluate(() => {
+    app.selectedSurfaces = [0]; app.updateTileCount();
+    window.__fills.clear(); app.redraw();
+    const canvasFills = [...window.__fills];
+    const list = app.computeCutList();
+    window.__fills.clear(); app.renderTileListPages();
+    const listFills = [...window.__fills];
+    return { canvasFills, listFills, kinds: list.groups.map((g) => g.kind), pieces: list.pieces, qty: list.groups.reduce((n, g) => n + g.qty, 0) };
+  });
+  expect(r.canvasFills.includes('#e5e9f0') && r.canvasFills.includes('#c9d3e2'), 'the two sizes should have two shades on the drawing: ' + JSON.stringify(r.canvasFills));
+  expect(r.kinds.includes(0) && r.kinds.includes(1) && JSON.stringify(r.kinds) === JSON.stringify([...r.kinds].sort()) && r.qty === r.pieces, 'pieces of both sizes should be listed, the first size first, with none lost: ' + JSON.stringify(r.kinds));
+  expect(r.listFills.includes('#d8dee9') && r.listFills.includes('#bcc8da'), 'the printed list should shade the two sizes\' pieces differently: ' + JSON.stringify(r.listFills));
+  // one size: one shade everywhere
+  await p.evaluate((j) => app.importDesign(j), design({ tile2WidthInches: 12, tile2HeightInches: 12 }));
+  await p.click('.tab[data-tab="finalize"]'); await p.waitForTimeout(250);
+  const one = await p.evaluate(() => {
+    app.selectedSurfaces = [0]; app.updateTileCount();
+    window.__fills.clear(); app.redraw(); app.renderTileListPages();
+    return [...window.__fills];
+  });
+  expect(!one.includes('#c9d3e2') && !one.includes('#bcc8da'), 'one size should not use the second shade: ' + JSON.stringify(one));
+  await p.context().close();
+});
+
 await browser.close();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) { console.log('Failed: ' + failures.join('; ')); process.exit(1); }

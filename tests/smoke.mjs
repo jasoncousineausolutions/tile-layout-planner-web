@@ -592,6 +592,444 @@ await step('layout image: full size in a browser, kept small in the app (low mem
   await p.context().close();
 });
 
+await step('cut piece pictures: equal parallel edges close together get one label (both sides of a notch), far apart ones keep both', async () => {
+  const p = await newPage({ width: 1280, height: 800 });
+  const texts = await p.evaluate(() => {
+    const seen = [];
+    const c = new Proxy({}, { get: (t, k) => k === 'measureText' ? (s) => ({ width: s.length * 13 }) : k === 'fillText' ? (s) => seen.push(s) : () => {}, set: () => true });
+    const ring = [[0, 0], [8, 0], [8, 6], [16, 6], [16, 0], [24, 0], [24, 12], [0, 12]].map(([x, y]) => ({ x, y, u: true }));
+    app.drawCutPiece(c, { ring, holes: [] }, 0, 0, 600, 300, (n) => n.toFixed(2) + '"');
+    return seen;
+  });
+  const count = (t) => texts.filter((x) => x === t).length;
+  expect(count('6.00"') === 1, 'the two 6.00" sides of the notch should be labelled once: ' + JSON.stringify(texts));
+  expect(count('12.00"') === 2 && count('24.00"') === 1, 'the 12.00" sides are far apart and keep both labels: ' + JSON.stringify(texts));
+  await p.context().close();
+});
+
+await step('islands smaller than a tile: their cut tiles get labels, are in the Tile and Cut List, and are not counted as whole tiles', async () => {
+  const K = 10.8;
+  const design = (island) => JSON.stringify({ format: 'tile-planner-design', version: '1.1', appState: { unitMode: 'decimal2', snapMode: 'auto', currentTab: 'surfaceDesign', zoom: 1, panX: 40, panY: 40 },
+    tileLayout: { tileWidthInches: 12, tileHeightInches: 12, groutWidthInches: 0.125, tileDepthInches: 0.5, bondOffset: 0, pattern: 'grid', rotationDegrees: 0, offsetXInches: 0, offsetYInches: 0 },
+    surface: { vertices: [[0, 0], [90, 0], [90, 80], [0, 80], ...island].map(([x, y]) => ({ x: x * K, y: y * K })), lines: [[0, 1], [1, 2], [2, 3], [3, 0], ...(island.length ? [[4, 5], [5, 6], [6, 7], [7, 4]] : [])] } });
+  const p = await newPage({ width: 1280, height: 800 });
+  const measure = async (island) => {
+    await p.evaluate((j) => app.importDesign(j), design(island));
+    await p.click('.tab[data-tab="finalize"]'); await p.waitForTimeout(250);
+    return p.evaluate(() => {
+      app.selectedSurfaces = [0]; app.updateTileCount(); app.panX = 40; app.panY = 40; app.zoom = 1.1;
+      const labels = []; const draw = app.drawMeasurementLabel.bind(app);
+      app.drawMeasurementLabel = (c, t, m, a) => { labels.push(t); return draw(c, t, m, a); };
+      app.redraw(); app.drawMeasurementLabel = draw;
+      const row = (label) => [...document.querySelectorAll('#tileCountSummary .count-row')].find((r) => r.textContent.startsWith(label));
+      const count = (label) => parseInt(row(label).querySelector('.count-value').textContent, 10);
+      const list = app.computeCutList();
+      return { labels, full: count('Full tiles'), total: count('Estimated tiles'), groups: list.groups.length, withHole: list.groups.filter((g) => g.holes && g.holes.length).length };
+    });
+  };
+  const none = await measure([]);
+  const inside = await measure([[38, 38], [44, 38], [44, 43], [38, 43]]);            // 6 x 5 in, inside one 12 in tile
+  const straddle = await measure([[46, 38], [51, 38], [51, 42], [46, 42]]);          // 5 x 4 in, across a joint
+  expect(['6.00"', '5.00"'].every((t) => inside.labels.includes(t)), 'an island inside one tile should be labelled 6.00" and 5.00": ' + JSON.stringify(inside.labels));
+  expect(straddle.labels.includes('4.00"') && straddle.labels.includes('2.38"'), 'an island across a joint should be labelled on both tiles: ' + JSON.stringify(straddle.labels));
+  expect(inside.withHole === 1 && straddle.groups > none.groups, 'the Tile and Cut List should include the cut tile(s): ' + JSON.stringify({ none, inside, straddle }));
+  expect(inside.full === none.full - 1 && straddle.full === none.full - 2 && inside.total === none.total && straddle.total === none.total, 'the tiles with an island are not whole tiles, and the total is unchanged: ' + JSON.stringify({ none, inside, straddle }));
+  await p.context().close();
+});
+
+await step('hopscotch: the second tile fields appear with 8 x 8, the two sizes fit with no gaps or overlaps, and it saves and loads', async () => {
+  const p = await newPage({ width: 1280, height: 800 });
+  expect(!(await p.isVisible('#tile2Row')), 'the second tile fields should be hidden for a grid');
+  await p.selectOption('#tilePattern', 'hopscotch');
+  expect(await p.isVisible('#tile2Row'), 'the second tile fields should show for hopscotch');
+  const defaults = await p.evaluate(() => [parseFloat(document.getElementById('tile2Width').value), parseFloat(document.getElementById('tile2Height').value)]);
+  expect(defaults[0] === 8 && defaults[1] === 8, 'the second tile should start at 8 x 8: ' + defaults);
+  await p.selectOption('#tilePattern', 'basketweave');
+  expect(!(await p.isVisible('#tile2Row')), 'the second tile fields should hide again for other patterns');
+  await p.selectOption('#tilePattern', 'hopscotch');
+  // any two sizes: tile slots (tile + grout) never overlap, and cover every point of a window
+  const result = await p.evaluate(() => {
+    const out = [];
+    for (const [W, H, w, h, g] of [[12, 12, 6, 6, 0.125], [24, 12, 8, 8, 0.125], [12, 24, 8, 4, 0], [10, 10, 3, 7, 0.25], [8, 8, 8, 8, 0.125]]) {
+      app.tileWidthInches = W; app.tileHeightInches = H; app.tile2WidthInches = w; app.tile2HeightInches = h; app.groutWidthInches = g;
+      const k = CONFIG.PIXELS_PER_INCH, layout = app.getLayout(), gp = g * k;
+      const tiles = layout.tilesIn(-400, -400, 1400, 1400).map((t) => ({ x: t.x, y: t.y, x2: t.x + t.w + gp, y2: t.y + t.h + gp, big: t.w === W * k && t.h === H * k }));
+      let overlaps = 0, holes = 0;
+      for (let i = 0; i < tiles.length; i++) for (let j = i + 1; j < tiles.length; j++) {
+        const a = tiles[i], b = tiles[j];
+        if (a.x < b.x2 - 1e-6 && b.x < a.x2 - 1e-6 && a.y < b.y2 - 1e-6 && b.y < a.y2 - 1e-6) overlaps++;
+      }
+      for (let x = 100; x < 900; x += 13.7) for (let y = 100; y < 900; y += 13.3) if (!tiles.some((t) => x >= t.x && x < t.x2 && y >= t.y && y < t.y2)) holes++;
+      out.push({ size: [W, H, w, h, g], overlaps, holes, bigs: tiles.filter((t) => t.big).length, smalls: tiles.filter((t) => !t.big).length });
+    }
+    return out;
+  });
+  for (const r of result) expect(r.overlaps === 0 && r.holes === 0 && r.bigs > 3 && (r.smalls > 3 || (r.size[0] === r.size[2] && r.size[1] === r.size[3])), 'hopscotch has gaps or overlaps: ' + JSON.stringify(r));
+  // save and load keep it
+  await p.evaluate(() => { app.tileWidthInches = 14; app.tileHeightInches = 14; app.tile2WidthInches = 5; app.tile2HeightInches = 9; app.groutWidthInches = 0.125; app.vertices = []; app.lines = []; });
+  const saved = await p.evaluate(() => app.exportDesign());
+  const tl = JSON.parse(saved).tileLayout;
+  expect(tl.pattern === 'hopscotch' && tl.tile2WidthInches === 5 && tl.tile2HeightInches === 9, 'the second tile should be saved: ' + JSON.stringify(tl));
+  await p.evaluate(() => { app.tile2WidthInches = 8; app.tile2HeightInches = 8; app.pattern = 'grid'; });
+  await p.evaluate((j) => app.importDesign(j), saved);
+  const back = await p.evaluate(() => ({ pattern: app.pattern, w: app.tile2WidthInches, h: app.tile2HeightInches, shown: getComputedStyle(document.getElementById('tile2Row')).display }));
+  expect(back.pattern === 'hopscotch' && back.w === 5 && back.h === 9 && back.shown !== 'none', 'the design did not load back as it was saved: ' + JSON.stringify(back));
+  // an old design with no second tile still opens, with 8 x 8 ready
+  await p.evaluate(() => { app.tile2WidthInches = 3; });
+  await p.evaluate((j) => app.importDesign(j), JSON.stringify({ ...JSON.parse(saved), tileLayout: { ...tl, pattern: 'grid', tile2WidthInches: undefined, tile2HeightInches: undefined } }));
+  expect(await p.evaluate(() => app.pattern === 'grid'), 'a grid design should load as a grid');
+  await p.context().close();
+});
+
+await step('hexagon: width is across the flats, the height box is worked out and locked, the hexagons fit, every piece is accounted for, and it saves and loads', async () => {
+  const K = 10.8;
+  const design = (rot) => JSON.stringify({ format: 'tile-planner-design', version: '1.1', appState: { unitMode: 'decimal2', snapMode: 'auto', currentTab: 'surfaceDesign', zoom: 1, panX: 40, panY: 40 },
+    tileLayout: { tileWidthInches: 8, tileHeightInches: 12, groutWidthInches: 0.25, tileDepthInches: 0.5, bondOffset: 0, pattern: 'hexagon', rotationDegrees: rot, offsetXInches: 1.5, offsetYInches: 0 },
+    surface: { vertices: [[0, 0], [60, 0], [60, 40], [0, 40], [24, 14], [34, 14], [34, 22], [24, 22]].map(([x, y]) => ({ x: x * K, y: y * K })), lines: [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4]] } });
+  const p = await newPage({ width: 1280, height: 800 });
+  await p.evaluate((j) => app.importDesign(j), design(0));
+  const ui = await p.evaluate(() => ({ disabled: document.getElementById('tileHeight').disabled, height: parseFloat(document.getElementById('tileHeight').value), hint: document.getElementById('weaveHint').style.display, tile2: document.getElementById('tile2Row').style.display }));
+  expect(ui.disabled && Math.abs(ui.height - 8 * 2 / Math.sqrt(3)) < 0.01 && ui.hint !== 'none' && ui.tile2 === 'none', 'the hexagon height box should be locked at the worked-out height: ' + JSON.stringify(ui));
+  await p.fill('#tileWidth', '10'); await p.waitForTimeout(100);
+  expect(Math.abs(parseFloat(await p.inputValue('#tileHeight')) - 10 * 2 / Math.sqrt(3)) < 0.01, 'the height box should follow the width');
+  await p.fill('#tileWidth', '8');
+  await p.selectOption('#tilePattern', 'grid');
+  const back = await p.evaluate(() => ({ disabled: document.getElementById('tileHeight').disabled, height: parseFloat(document.getElementById('tileHeight').value) }));
+  expect(!back.disabled && back.height === 12, 'leaving hexagon should give back the typed height (12): ' + JSON.stringify(back));
+  await p.selectOption('#tilePattern', 'hexagon');
+  // the hexagons: equal, one joint apart, no gaps (every sample point is in some hexagon's grout box)
+  const geometry = await p.evaluate(() => {
+    const k = CONFIG.PIXELS_PER_INCH, layout = app.getLayout(), F = 8 * k, g = 0.25 * k;
+    const tiles = layout.tilesIn(-300, -300, 1200, 1200);
+    const areas = tiles.map((t) => Math.abs(ringArea(t.poly.map((c) => ({ x: c.x, y: c.y })))));
+    let tooClose = 0, holes = 0;
+    const centres = tiles.map((t) => ({ x: t.x + t.w / 2, y: t.y + t.h / 2 }));
+    for (let i = 0; i < centres.length; i++) for (let j = i + 1; j < centres.length; j++) if (Math.hypot(centres[i].x - centres[j].x, centres[i].y - centres[j].y) < F + g - 1e-6) tooClose++;
+    for (let x = 100; x < 900; x += 11.3) for (let y = 100; y < 900; y += 10.9) if (!tiles.some((t) => pointInPolygon({ x, y }, t.slot))) holes++;
+    return { count: tiles.length, areaSpread: Math.max(...areas) - Math.min(...areas), area: areas[0] / (k * k), tooClose, holes };
+  });
+  expect(geometry.tooClose === 0 && geometry.holes === 0 && geometry.areaSpread < 1e-6 && Math.abs(geometry.area - Math.sqrt(3) / 2 * 64) < 0.01, 'the hexagons do not fit: ' + JSON.stringify(geometry));
+  // every piece is accounted for: whole tiles plus cut pieces cover the surface less the grout, at 0 and 30 degrees
+  for (const rot of [0, 30]) {
+    await p.evaluate((j) => app.importDesign(j), design(rot));
+    await p.click('.tab[data-tab="finalize"]'); await p.waitForTimeout(250);
+    const r = await p.evaluate(() => {
+      app.selectedSurfaces = [0]; app.updateTileCount();
+      const area = app.computeSurfaceArea(app.detectedSurfaces[0]);
+      const list = app.computeCutList();
+      const pieceArea = list.groups.reduce((sum, grp) => sum + grp.qty * (Math.abs(ringArea(grp.ring)) - grp.holes.reduce((s, h) => s + Math.abs(ringArea(h)), 0)), 0);
+      const full = parseInt([...document.querySelectorAll('#tileCountSummary .count-row')].find((row) => row.textContent.startsWith('Full tiles')).querySelector('.count-value').textContent, 10);
+      const labels = []; const draw = app.drawMeasurementLabel.bind(app);
+      app.drawMeasurementLabel = (c, t, m, a) => { labels.push(t); return draw(c, t, m, a); };
+      app.redraw(); app.drawMeasurementLabel = draw;
+      return { area, covered: full * (Math.sqrt(3) / 2) * 64 + pieceArea, labels: labels.length, pieces: list.pieces };
+    });
+    const ratio = r.covered / r.area;
+    expect(ratio > 0.9 && ratio <= 1.0001, `hexagon tiles and pieces should cover the surface less its grout at ${rot} degrees: ` + JSON.stringify(r));
+    expect(r.labels > 10 && r.pieces > 10, `cut hexagons should be labelled and listed at ${rot} degrees: ` + JSON.stringify(r));
+  }
+  // save and load
+  const saved = JSON.parse(await p.evaluate(() => app.exportDesign()));
+  expect(saved.tileLayout.pattern === 'hexagon' && saved.tileLayout.tileWidthInches === 8, 'hexagon should be saved: ' + JSON.stringify(saved.tileLayout));
+  await p.context().close();
+});
+
+await step('pinwheel: the grout is worked out from the rectangle and the square, the tiles fit, every piece is accounted for, and a square that does not fit says so', async () => {
+  const K = 10.8;
+  const design = (rot, w, h, sq, bond = 0) => JSON.stringify({ format: 'tile-planner-design', version: '1.1', appState: { unitMode: 'sixtyfourth', snapMode: 'auto', currentTab: 'surfaceDesign', zoom: 1, panX: 40, panY: 40 },
+    tileLayout: { tileWidthInches: w, tileHeightInches: h, tile2WidthInches: sq, groutWidthInches: 0.125, tileDepthInches: 0.5, bondOffset: bond, pattern: 'pinwheel', rotationDegrees: rot, offsetXInches: 1, offsetYInches: 0 },
+    surface: { vertices: [[0, 0], [48, 0], [48, 34], [0, 34], [14, 10], [22, 10], [22, 16], [14, 16]].map(([x, y]) => ({ x: x * K, y: y * K })), lines: [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4]] } });
+  const p = await newPage({ width: 1280, height: 800 });
+  // choosing the pattern starts with the square that fits the rectangle and the grout in use
+  await p.selectOption('#tilePattern', 'pinwheel');
+  const start = await p.evaluate(() => ({ square: app.tile2WidthInches, grout: app.effectiveGrout(), row: document.getElementById('tile2Row').style.display, heightBox: document.getElementById('tile2Height').closest('.input-group').style.display }));
+  expect(start.row !== 'none' && start.heightBox === 'none' && Math.abs(start.square + start.grout - 12) < 1e-6, 'a pinwheel should start with a square that fits (24 x 12 gives 12): ' + JSON.stringify(start));
+  // a fitting pair: 8 x 4 with a 3 51/64 square leaves a 13/64 grout, shown locked and in fractions
+  await p.evaluate((j) => app.importDesign(j), design(0, 8, 4, 3.796875));
+  const ui = await p.evaluate(() => ({ locked: document.getElementById('groutWidth').disabled, grout: parseFloat(document.getElementById('groutWidth').value), hint: document.getElementById('weaveHint').textContent, label: document.getElementById('labelTile2Width').textContent }));
+  expect(ui.locked && Math.abs(ui.grout - 0.203) < 0.001 && /13\/64/.test(ui.hint) && /Square side/.test(ui.label), 'the grout should be worked out and locked: ' + JSON.stringify(ui));
+  // the tiles fit: slots (tile + grout) never overlap and leave no gap
+  const geometry = await p.evaluate(() => {
+    const out = [];
+    for (const bond of [0, 0.5, 0.3333]) {
+    app.bondOffset = bond;
+    const k = CONFIG.PIXELS_PER_INCH, layout = app.getLayout(), g = layout.groutW;
+    const tiles = layout.tilesIn(-300, -300, 1200, 1200).map((t) => ({ x: t.x, y: t.y, x2: t.x + t.w + g, y2: t.y + t.h + g, sq: t.w === t.h }));
+    let overlaps = 0, holes = 0;
+    for (let i = 0; i < tiles.length; i++) for (let j = i + 1; j < tiles.length; j++) {
+      const a = tiles[i], b = tiles[j];
+      if (a.x < b.x2 - 1e-6 && b.x < a.x2 - 1e-6 && a.y < b.y2 - 1e-6 && b.y < a.y2 - 1e-6) overlaps++;
+    }
+    for (let x = 100; x < 900; x += 13.7) for (let y = 100; y < 900; y += 13.3) if (!tiles.some((t) => x >= t.x && x < t.x2 && y >= t.y && y < t.y2)) holes++;
+    out.push({ bond, overlaps, holes, squares: tiles.filter((t) => t.sq).length, rects: tiles.filter((t) => !t.sq).length });
+    }
+    app.bondOffset = 0;
+    return out;
+  });
+  for (const r of geometry) expect(r.overlaps === 0 && r.holes === 0 && r.squares > 5 && r.rects / r.squares > 3.5 && r.rects / r.squares < 5, 'the pinwheel does not fit (row offset ' + r.bond + '): ' + JSON.stringify(r));
+  // every piece is accounted for, for a wide rectangle, a tall one and a turned layout
+  for (const [rot, w, h, sq, bond] of [[0, 8, 4, 3.796875, 0], [30, 4, 6, 1.875, 0], [0, 6, 12, 5.8125, 0], [0, 8, 4, 3.796875, 0.5]]) {
+    await p.evaluate((j) => app.importDesign(j), design(rot, w, h, sq, bond));
+    await p.click('.tab[data-tab="finalize"]'); await p.waitForTimeout(250);
+    const r = await p.evaluate(() => {
+      app.selectedSurfaces = [0]; app.updateTileCount();
+      const area = app.computeSurfaceArea(app.detectedSurfaces[0]);
+      const list = app.computeCutList();
+      const pieceArea = list.groups.reduce((sum, grp) => sum + grp.qty * (Math.abs(ringArea(grp.ring)) - grp.holes.reduce((s, h2) => s + Math.abs(ringArea(h2)), 0)), 0);
+      const full = parseInt([...document.querySelectorAll('#tileCountSummary .count-row')].find((row) => row.textContent.startsWith('Full tiles')).querySelector('.count-value').textContent, 10);
+      const layout = app.getLayout(), ppi = CONFIG.PIXELS_PER_INCH;
+      // the whole tiles are a mix of rectangles and squares: count each kind
+      let fullArea = 0;
+      for (const surfaceIdx of app.selectedSurfaces) {
+        const surface = app.detectedSurfaces[surfaceIdx], rings = app.surfaceRings(layout, surface);
+        const xs = app.getSurfaceOuterBoundary(surface).map((i) => app.vertices[i].x), ys = app.getSurfaceOuterBoundary(surface).map((i) => app.vertices[i].y);
+        for (const tile of layout.tilesCovering(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), layout.reach * 2)) {
+          if (!app.analyzeTileIntersectionWithSurface(tile.corners, surface, layout.tileW, layout.tileH)) { if (rings.outer.length && app.pointInSurface({ x: (tile.corners[0].x + tile.corners[2].x) / 2, y: (tile.corners[0].y + tile.corners[2].y) / 2 }, surface)) fullArea += (tile.w / ppi) * (tile.h / ppi); continue; }
+          const c = app.clipTile(tile, rings);
+          if (c.full) fullArea += (tile.w / ppi) * (tile.h / ppi);
+        }
+      }
+      return { area, covered: fullArea + pieceArea, grout: app.effectiveGrout(), full };
+    });
+    const ratio = r.covered / r.area;
+    expect(ratio > 0.9 && ratio <= 1.0001, `pinwheel tiles and pieces should cover the surface less its grout (${rot} deg, ${w} x ${h}): ` + JSON.stringify(r));
+  }
+  // a square that is too big, and a rectangle that is not one
+  await p.evaluate((j) => app.importDesign(j), design(0, 8, 4, 4.5));
+  const tooBig = await p.evaluate(() => ({ locked: document.getElementById('groutWidth').disabled, hint: document.getElementById('weaveHint').textContent, color: document.getElementById('weaveHint').style.color, layoutPattern: app.getLayout().pattern }));
+  expect(!tooBig.locked && /smaller than/.test(tooBig.hint) && tooBig.color !== '' && tooBig.layoutPattern === 'grid', 'a square that is too big should say so and lay a plain grid: ' + JSON.stringify(tooBig));
+  await p.evaluate((j) => app.importDesign(j), design(0, 6, 6, 2));
+  const notARectangle = await p.evaluate(() => document.getElementById('weaveHint').textContent);
+  expect(/needs a rectangle/.test(notARectangle), 'a square tile should be told a pinwheel needs a rectangle: ' + notARectangle);
+  // save and load
+  await p.evaluate((j) => app.importDesign(j), design(0, 8, 4, 3.796875));
+  const saved = JSON.parse(await p.evaluate(() => app.exportDesign()));
+  expect(saved.tileLayout.pattern === 'pinwheel' && saved.tileLayout.tile2WidthInches === 3.796875, 'pinwheel should be saved: ' + JSON.stringify(saved.tileLayout));
+  await p.context().close();
+});
+
+await step('typing in the tile height and grout boxes is never overwritten, in every pattern', async () => {
+  const p = await newPage({ width: 1280, height: 800 });
+  for (const pattern of ['grid', 'stepped', 'herringbone', 'basketweave', 'hopscotch', 'pinwheel', 'hexagon', 'grid']) {
+    await p.selectOption('#tilePattern', pattern);
+    if (pattern === 'hexagon') { expect(await p.isDisabled('#tileHeight'), 'the hexagon height box should be locked'); continue; }
+    expect(!(await p.isDisabled('#tileHeight')), `the height box should be editable for ${pattern}`);
+    await p.click('#tileHeight', { clickCount: 3 }); await p.keyboard.type('15');
+    expect((await p.inputValue('#tileHeight')) === '15', `typing 15 in the height box for ${pattern} gave ${await p.inputValue('#tileHeight')}`);
+    expect(await p.evaluate(() => app.tileHeightInches) === 15, `the height should be 15 for ${pattern}`);
+    await p.click('#tileHeight', { clickCount: 3 }); await p.keyboard.press('Backspace');
+    expect((await p.inputValue('#tileHeight')) === '', `the height box should be able to be emptied for ${pattern}`);
+    await p.keyboard.type('12');
+    if (!(await p.isDisabled('#groutWidth'))) {
+      await p.click('#groutWidth', { clickCount: 3 }); await p.keyboard.type('0.2');
+      expect((await p.inputValue('#groutWidth')) === '0.2', `typing 0.2 in the grout box for ${pattern} gave ${await p.inputValue('#groutWidth')}`);
+    }
+  }
+  await p.context().close();
+});
+
+await step('distance tool: shown where there is a mouse, hidden on a touch screen, and its colour is a Display Options setting', async () => {
+  const p = await newPage({ width: 1280, height: 800 });
+  await p.click('.tab[data-tab="surfaceDesign"]');
+  expect(await p.isVisible('#distanceTool'), 'the distance tool should show with a mouse');
+  await p.evaluate(() => {
+    window.__strokes = new Set();
+    const d = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'strokeStyle');
+    Object.defineProperty(CanvasRenderingContext2D.prototype, 'strokeStyle', { set(v) { window.__strokes.add(String(v).toLowerCase()); d.set.call(this, v); }, get() { return d.get.call(this); } });
+  });
+  await drawRectangle(p);
+  const draws = async () => p.evaluate(() => {
+    window.__strokes.clear();
+    app.distanceToolEnabled = true;
+    const a = app.vertices[0], b = app.vertices[2];
+    app.mousePos = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    app.redraw();
+    return [...window.__strokes];
+  });
+  const first = await draws();
+  expect(first.includes('#b8860b'), 'the distance tool should draw in its default colour, a dark gold: ' + JSON.stringify(first));
+  await p.evaluate(() => { app.displayColors.distance = '#112233'; });
+  const second = await draws();
+  expect(second.includes('#112233') && !second.includes('#b8860b'), 'the distance tool should use the colour chosen in Display Options: ' + JSON.stringify(second));
+  const names = await p.evaluate(() => [...document.querySelectorAll('#displayCollapsible input[type="color"]')].map((i) => i.dataset.key));
+  expect(names.includes('distance'), 'Display Options should have a Distance tool colour: ' + JSON.stringify(names));
+  await p.context().close();
+  // a touch screen cannot hover: no distance tool, and a design saved with it on loads with it off
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 780 }, hasTouch: true, isMobile: true });
+  const t = await ctx.newPage();
+  await t.goto(url); await t.waitForTimeout(300);
+  await t.click('.tab[data-tab="surfaceDesign"]');
+  expect(!(await t.isVisible('#distanceTool')), 'the distance tool should be hidden on a touch screen');
+  const loaded = await t.evaluate(() => {
+    const k = 10.8;
+    app.importDesign(JSON.stringify({ format: 'tile-planner-design', version: '1.1', appState: { unitMode: 'decimal2', snapMode: 'auto', distanceToolEnabled: true, currentTab: 'surfaceDesign', zoom: 1, panX: 0, panY: 0 },
+      tileLayout: { tileWidthInches: 12, tileHeightInches: 12, groutWidthInches: 0, pattern: 'grid' }, surface: { vertices: [[0, 0], [60, 0], [60, 40], [0, 40]].map(([x, y]) => ({ x: x * k, y: y * k })), lines: [[0, 1], [1, 2], [2, 3], [3, 0]] } }));
+    return app.distanceToolEnabled;
+  });
+  expect(loaded === false, 'a design saved with the distance tool on should open with it off on a touch screen');
+  await ctx.close();
+});
+
+await step('sketch reader key: switched off, so nothing about it shows and no key is ever sent', async () => {
+  const p = await newPage({ width: 1280, height: 800 });
+  await p.evaluate(() => { localStorage.setItem('tilePlanner_sketchKey', 'AIzaSyTestKey_1234567890abcdefghijklmnopq'); });
+  const seen = [];
+  await p.route('**/api/sketch*', async (r) => { seen.push(r.request().headers()['x-gemini-key'] || null); await r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(room) }); });
+  await p.evaluate(() => document.getElementById('btnToggleFile').click());
+  expect(!(await p.isVisible('#btnSketchKey')), 'the Sketch reader key menu item should be hidden while the feature is off');
+  await p.evaluate(() => document.getElementById('btnSketch').click()); await p.waitForSelector('#sketchDialog', { state: 'visible' });
+  expect(!(await p.isVisible('#sketchOwnKey')), 'the own-key note should not show');
+  await p.setInputFiles('#sketchFile', sketchPng); await p.waitForTimeout(400);
+  await p.click('#sketchConvert'); await p.waitForSelector('#sketchLoad', { state: 'visible' });
+  expect(seen.length === 1 && seen[0] === null, 'no key should be sent while the feature is off, even if one was saved: ' + JSON.stringify(seen));
+  await p.context().close();
+});
+
+await step('sketch reader key (when switched on): saved only on the device, checked, sent with each sketch, removable, and never put in a design', async () => {
+  const p = await newPage({ width: 1280, height: 800 });
+  await p.evaluate(() => { CONFIG.SKETCH_OWN_KEY = true; app.updateSketchKeyMenu(); try { localStorage.removeItem('tilePlanner_sketchKey'); } catch (e) { /* ignore */ } });
+  const seen = [];
+  await p.route('**/api/sketch*', async (r) => { seen.push(r.request().headers()['x-gemini-key'] || null); await r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(room) }); });
+  await p.evaluate(() => document.getElementById('btnToggleFile').click());
+  expect(await p.isVisible('#btnSketchKey'), 'the Import & Export menu should have Sketch reader key');
+  await p.click('#btnSketchKey');
+  await p.waitForSelector('#sketchKeyDialog', { state: 'visible' });
+  expect(/No key saved/.test(await p.textContent('#sketchKeyStatus')) && await p.isDisabled('#sketchKeyRemove'), 'it should start with no key');
+  await p.fill('#sketchKeyInput', 'short key'); await p.click('#sketchKeySave');
+  expect(/does not look like a key/.test(await p.textContent('#sketchKeyStatus')) && !(await p.evaluate(() => localStorage.getItem('tilePlanner_sketchKey'))), 'a bad key should be refused');
+  const good = 'AIzaSyTestKey_1234567890abcdefghijklmnopq';
+  await p.fill('#sketchKeyInput', '  ' + good + '  '); await p.click('#sketchKeySave');
+  expect(await p.evaluate(() => localStorage.getItem('tilePlanner_sketchKey')) === good && /Saved on this device/.test(await p.textContent('#sketchKeyStatus')), 'a good key should be saved, trimmed');
+  expect((await p.inputValue('#sketchKeyInput')) === '', 'the key box should be emptied after saving');
+  await p.click('#sketchKeyClose');
+  // it is sent with the sketch, and the sketch dialog says so
+  await p.evaluate(() => document.getElementById('btnSketch').click()); await p.waitForSelector('#sketchDialog', { state: 'visible' });
+  expect(await p.isVisible('#sketchOwnKey'), 'the sketch dialog should say your own key is in use');
+  await p.setInputFiles('#sketchFile', sketchPng); await p.waitForTimeout(400);
+  await p.click('#sketchConvert'); await p.waitForSelector('#sketchLoad', { state: 'visible' });
+  expect(seen.length === 1 && seen[0] === good, 'the key should be sent with the sketch: ' + JSON.stringify(seen));
+  // the design file never has it
+  expect(!(await p.evaluate(() => app.exportDesign())).includes('AIza'), 'the key must not be in a saved design');
+  // Google rejecting it, and its limit, are said plainly
+  await p.unroute('**/api/sketch*');
+  await p.route('**/api/sketch*', (r) => r.fulfill({ status: 400, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ code: 'bad_key' }) }));
+  await p.click('#sketchConvert'); await p.waitForTimeout(500);
+  expect(/did not accept your key/.test(await p.textContent('#sketchStatus')), 'a rejected key should say so: ' + await p.textContent('#sketchStatus'));
+  await p.unroute('**/api/sketch*');
+  await p.route('**/api/sketch*', (r) => r.fulfill({ status: 429, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ code: 'quota' }) }));
+  await p.click('#sketchConvert'); await p.waitForTimeout(500);
+  expect(/Your key has reached its usage limit/.test(await p.textContent('#sketchStatus')), 'a key at its limit should say so: ' + await p.textContent('#sketchStatus'));
+  await p.click('#sketchClose');
+  // remove it: the next sketch goes without a key
+  await p.evaluate(() => document.getElementById('btnSketchKey').click());
+  await p.click('#sketchKeyRemove');
+  expect(await p.evaluate(() => localStorage.getItem('tilePlanner_sketchKey')) === null && /Key removed/.test(await p.textContent('#sketchKeyStatus')), 'the key should be removed');
+  await p.unroute('**/api/sketch*');
+  seen.length = 0;
+  await p.route('**/api/sketch*', async (r) => { seen.push(r.request().headers()['x-gemini-key'] || null); await r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(room) }); });
+  await p.click('#sketchKeyClose');
+  await p.evaluate(() => document.getElementById('btnSketch').click()); await p.waitForSelector('#sketchDialog', { state: 'visible' });
+  expect(!(await p.isVisible('#sketchOwnKey')), 'the own-key note should go');
+  await p.click('#sketchConvert'); await p.waitForSelector('#sketchLoad', { state: 'visible' });
+  expect(seen.length === 1 && seen[0] === null, 'without a key, none should be sent: ' + JSON.stringify(seen));
+  await p.context().close();
+});
+
+await step('two tile sizes: the estimate and the Tile and Cut List count each size separately', async () => {
+  const K = 10.8;
+  const design = (pattern, extra) => JSON.stringify({ format: 'tile-planner-design', version: '1.1', appState: { unitMode: 'decimal2', snapMode: 'auto', currentTab: 'surfaceDesign', zoom: 1, panX: 40, panY: 40 },
+    tileLayout: { tileWidthInches: 12, tileHeightInches: 12, groutWidthInches: 0.125, tileDepthInches: 0.5, bondOffset: 0, pattern, rotationDegrees: 0, offsetXInches: 0, offsetYInches: 0, ...extra },
+    surface: { vertices: [[0, 0], [60, 0], [60, 40], [0, 40]].map(([x, y]) => ({ x: x * K, y: y * K })), lines: [[0, 1], [1, 2], [2, 3], [3, 0]] } });
+  const p = await newPage({ width: 1280, height: 800 });
+  const summary = async (json) => {
+    await p.evaluate((j) => app.importDesign(j), json);
+    await p.click('.tab[data-tab="finalize"]'); await p.waitForTimeout(250);
+    return p.evaluate(() => {
+      app.selectedSurfaces = [0]; app.updateTileCount();
+      const rows = [...document.querySelectorAll('#tileCountSummary .count-row')].map((r) => [r.children[0].textContent.trim(), r.children[1] ? r.children[1].textContent.trim() : null]);
+      // the same rows go onto the printed list
+      const listRows = [...document.querySelectorAll('#tileCountSummary .count-row')].length;
+      return { rows, mobile: document.getElementById('tileCountSummaryMobile').innerHTML === document.getElementById('tileCountSummary').innerHTML, listRows };
+    });
+  };
+  // one size: no headings, one total
+  const single = await summary(design('grid', {}));
+  expect(single.rows.filter(([l, v]) => v === null).length === 0 && single.rows.some(([l]) => l === 'Estimated tiles to buy:'), 'one size should keep the single total: ' + JSON.stringify(single.rows));
+  // two sizes: a heading, the counts and a "Tiles to buy" line for each
+  for (const [pattern, extra, second] of [['hopscotch', { tile2WidthInches: 6, tile2HeightInches: 6 }, '6.00" × 6.00" tiles'], ['pinwheel', { tileWidthInches: 8, tileHeightInches: 4, tile2WidthInches: 3.796875 }, '3.80" × 3.80" tiles']]) {
+    const two = await summary(design(pattern, extra));
+    const headings = two.rows.filter(([l, v]) => v === null).map(([l]) => l);
+    const buys = two.rows.filter(([l]) => l === 'Tiles to buy:').map(([, v]) => parseInt(v, 10));
+    expect(headings.length === 2 && headings[1] === second, `${pattern}: each size should have a heading: ` + JSON.stringify(headings));
+    expect(buys.length === 2 && buys.every((n) => n > 0), `${pattern}: each size should say how many tiles to buy: ` + JSON.stringify(two.rows));
+    expect(!two.rows.some(([l]) => l === 'Estimated tiles to buy:'), `${pattern}: sizes that differ should not be added into one total`);
+    expect(two.mobile, `${pattern}: the phone summary should match`);
+    // each size's full tiles are counted on their own: they match counting them one by one
+    const direct = await p.evaluate(() => {
+      const layout = app.getLayout(), ppi = CONFIG.PIXELS_PER_INCH, surface = app.detectedSurfaces[0], rings = app.surfaceRings(layout, surface);
+      const xs = app.getSurfaceOuterBoundary(surface).map((i) => app.vertices[i].x), ys = app.getSurfaceOuterBoundary(surface).map((i) => app.vertices[i].y);
+      const counts = { first: 0, second: 0 };
+      for (const tile of layout.tilesCovering(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), layout.reach * 2)) {
+        const info = app.analyzeTileIntersectionWithSurface(tile.corners, surface, layout.tileW, layout.tileH);
+        const whole = info ? app.clipTile(tile, rings).full : app.pointInSurface({ x: (tile.corners[0].x + tile.corners[2].x) / 2, y: (tile.corners[0].y + tile.corners[2].y) / 2 }, surface);
+        if (!whole) continue;
+        const lo = Math.min(tile.w, tile.h), hi = Math.max(tile.w, tile.h);
+        if (Math.abs(lo - Math.min(layout.tileW, layout.tileH)) < 0.01 && Math.abs(hi - Math.max(layout.tileW, layout.tileH)) < 0.01) counts.first++; else counts.second++;
+      }
+      return counts;
+    });
+    const fulls = two.rows.filter(([l]) => l === 'Full tiles (no cuts):').map(([, v]) => parseInt(v, 10));
+    expect(fulls[0] === direct.first && fulls[1] === direct.second, `${pattern}: full tiles per size should be ${JSON.stringify(direct)} but were ${JSON.stringify(fulls)}`);
+  }
+  // two sizes that are really the same size are one size
+  const same = await summary(design('hopscotch', { tile2WidthInches: 12, tile2HeightInches: 12 }));
+  expect(same.rows.filter(([l, v]) => v === null).length === 0, 'two equal sizes should be reported as one: ' + JSON.stringify(same.rows));
+  await p.context().close();
+});
+
+await step('two tile sizes: pieces of the same shape from different tiles are kept apart, and each size has its own shade on the drawing and in the printed list', async () => {
+  const K = 10.8;
+  const design = (extra) => JSON.stringify({ format: 'tile-planner-design', version: '1.1', appState: { unitMode: 'decimal2', snapMode: 'auto', currentTab: 'surfaceDesign', zoom: 1, panX: 40, panY: 40 },
+    tileLayout: { tileWidthInches: 12, tileHeightInches: 12, groutWidthInches: 0.125, tileDepthInches: 0.5, bondOffset: 0, pattern: 'hopscotch', tile2WidthInches: 6, tile2HeightInches: 6, rotationDegrees: 0, offsetXInches: 0, offsetYInches: 0, ...extra },
+    surface: { vertices: [[0, 0], [50, 0], [50, 38], [0, 38]].map(([x, y]) => ({ x: x * K, y: y * K })), lines: [[0, 1], [1, 2], [2, 3], [3, 0]] } });
+  const p = await newPage({ width: 1280, height: 800 });
+  await p.evaluate(() => {
+    window.__fills = new Set();
+    const d = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'fillStyle');
+    Object.defineProperty(CanvasRenderingContext2D.prototype, 'fillStyle', { set(v) { window.__fills.add(String(v).toLowerCase()); d.set.call(this, v); }, get() { return d.get.call(this); } });
+    // the same shape from either kind of tile is two groups
+    const ring = [{ x: 0, y: 0, u: true }, { x: 6, y: 0, u: false }, { x: 6, y: 6, u: true }, { x: 0, y: 6, u: true }];
+    const groups = [];
+    addCutPiece(groups, ring, [], 0); addCutPiece(groups, ring, [], 1); addCutPiece(groups, ring, [], 1); addCutPiece(groups, ring, [], 0);
+    window.__apart = groups.map((g) => [g.kind, g.qty]);
+  });
+  expect(JSON.stringify(await p.evaluate(() => window.__apart)) === '[[0,2],[1,2]]', 'the same shape from the two kinds should be two groups: ' + JSON.stringify(await p.evaluate(() => window.__apart)));
+  await p.evaluate((j) => app.importDesign(j), design({}));
+  await p.click('.tab[data-tab="finalize"]'); await p.waitForTimeout(250);
+  const r = await p.evaluate(() => {
+    app.selectedSurfaces = [0]; app.updateTileCount();
+    window.__fills.clear(); app.redraw();
+    const canvasFills = [...window.__fills];
+    const list = app.computeCutList();
+    window.__fills.clear(); app.renderTileListPages();
+    const listFills = [...window.__fills];
+    return { canvasFills, listFills, kinds: list.groups.map((g) => g.kind), pieces: list.pieces, qty: list.groups.reduce((n, g) => n + g.qty, 0) };
+  });
+  expect(r.canvasFills.includes('#e5e9f0') && r.canvasFills.includes('#c9d3e2'), 'the two sizes should have two shades on the drawing: ' + JSON.stringify(r.canvasFills));
+  expect(r.kinds.includes(0) && r.kinds.includes(1) && JSON.stringify(r.kinds) === JSON.stringify([...r.kinds].sort()) && r.qty === r.pieces, 'pieces of both sizes should be listed, the first size first, with none lost: ' + JSON.stringify(r.kinds));
+  expect(r.listFills.includes('#d8dee9') && r.listFills.includes('#bcc8da'), 'the printed list should shade the two sizes\' pieces differently: ' + JSON.stringify(r.listFills));
+  // one size: one shade everywhere
+  await p.evaluate((j) => app.importDesign(j), design({ tile2WidthInches: 12, tile2HeightInches: 12 }));
+  await p.click('.tab[data-tab="finalize"]'); await p.waitForTimeout(250);
+  const one = await p.evaluate(() => {
+    app.selectedSurfaces = [0]; app.updateTileCount();
+    window.__fills.clear(); app.redraw(); app.renderTileListPages();
+    return [...window.__fills];
+  });
+  expect(!one.includes('#c9d3e2') && !one.includes('#bcc8da'), 'one size should not use the second shade: ' + JSON.stringify(one));
+  await p.context().close();
+});
+
 await browser.close();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) { console.log('Failed: ' + failures.join('; ')); process.exit(1); }
